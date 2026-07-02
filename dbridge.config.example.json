@@ -1,6 +1,6 @@
 {
   "maxRows": 500,
-  "hiddenColumns": ["tc_kimlik", "parola"],
+  "hiddenColumns": ["ssn", "password_hash"],
   "maskedColumns": ["iban", { "column": "email", "strategy": "email" }],
   "allowedTables": [],
   "blockedTables": ["audit_log"],

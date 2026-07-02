@@ -84,7 +84,7 @@ Claude Desktop only supports a single global config. Add to `claude_desktop_conf
 }
 ```
 
-For a local SQLite file, replace the connection string with an absolute path to the `.db` file. Restart Claude Desktop, then ask: _"geçen ay en çok satan 5 ürün ne?"_
+For a local SQLite file, replace the connection string with an absolute path to the `.db` file. Restart Claude Desktop, then ask: _"what were the 5 best-selling products last month?"_
 
 ## Use it in Claude Code
 
@@ -180,10 +180,10 @@ Or keep everything in one place: point `DBRIDGE_CONFIG` at a JSON file (see [`db
 ```json
 {
   "maxRows": 500,
-  "hiddenColumns": ["tc_kimlik", "parola"],
+  "hiddenColumns": ["ssn", "password_hash"],
   "maskedColumns": ["iban", { "column": "email", "strategy": "email" }],
-  "allowedTables": ["urunler", "satislar", "musteriler"],
-  "blockedTables": ["personel", "audit_log"],
+  "allowedTables": ["products", "sales", "customers"],
+  "blockedTables": ["employees", "audit_log"],
   "statementTimeoutMs": 5000,
   "maxCost": 100000,
   "rateLimitPerMin": 60,
@@ -213,7 +213,7 @@ Or keep everything in one place: point `DBRIDGE_CONFIG` at a JSON file (see [`db
 | `schemas` | `--schemas` / `DBRIDGE_SCHEMAS` | `["public"]` | PostgreSQL-only: schemas to expose; multiple schemas yield `schema.table` names. |
 | `auditLog` | `--audit-log` / `DBRIDGE_AUDIT_LOG` | `false` | Log every tool call (query, rows, duration, errors) as JSON to stderr. |
 
-List values on the command line or in env vars are comma-separated (`--allowed-tables urunler,satislar`).
+List values on the command line or in env vars are comma-separated (`--allowed-tables products,sales`).
 
 Engine note: `statementTimeoutMs`, `maxCost`, `maxPoolSize`, `connectionTimeoutMs`, `requireSsl`, and `schemas` apply to the networked engines (PostgreSQL/MySQL). SQLite is a local file, so it ignores them; the row cap, column/table access control, and masking apply to every engine.
 
@@ -246,7 +246,7 @@ To hack on dbridge itself, clone the repo and build from source:
 ```bash
 npm install
 npm run build
-npm run seed        # creates demo.db (a small store: urunler, musteriler, satislar)
+npm run seed        # creates demo.db (a small store: products, customers, sales)
 node dist/index.js demo.db
 ```
 

@@ -16,8 +16,8 @@ import {
 const withHidden = { ...DEFAULT_SAFETY, maxRows: 1000, hiddenColumns: ["maas"] };
 
 test("appends a limit when none is present", () => {
-  const { sql, rowCap } = sanitizeQuery("SELECT * FROM urunler", DEFAULT_SAFETY);
-  assert.equal(sql, "SELECT * FROM urunler LIMIT 1001");
+  const { sql, rowCap } = sanitizeQuery("SELECT * FROM products", DEFAULT_SAFETY);
+  assert.equal(sql, "SELECT * FROM products LIMIT 1001");
   assert.equal(rowCap, 1000);
 });
 
@@ -29,15 +29,15 @@ test("keeps a user limit at or below maxRows", () => {
 
 test("caps a user limit above maxRows", () => {
   const small = { ...DEFAULT_SAFETY, maxRows: 500 };
-  const { sql, rowCap } = sanitizeQuery("SELECT * FROM satislar LIMIT 1000000", small);
-  assert.equal(sql, "SELECT * FROM satislar LIMIT 501");
+  const { sql, rowCap } = sanitizeQuery("SELECT * FROM sales LIMIT 1000000", small);
+  assert.equal(sql, "SELECT * FROM sales LIMIT 501");
   assert.equal(rowCap, 500);
 });
 
 test("caps a limit with an offset", () => {
   const small = { ...DEFAULT_SAFETY, maxRows: 500 };
-  const { sql } = sanitizeQuery("SELECT * FROM satislar LIMIT 9999 OFFSET 10", small);
-  assert.equal(sql, "SELECT * FROM satislar LIMIT 501 OFFSET 10");
+  const { sql } = sanitizeQuery("SELECT * FROM sales LIMIT 9999 OFFSET 10", small);
+  assert.equal(sql, "SELECT * FROM sales LIMIT 501 OFFSET 10");
 });
 
 test("allows WITH statements", () => {
@@ -46,14 +46,14 @@ test("allows WITH statements", () => {
 });
 
 test("rejects writes and DDL", () => {
-  assert.throws(() => sanitizeQuery("DELETE FROM urunler", DEFAULT_SAFETY));
-  assert.throws(() => sanitizeQuery("DROP TABLE urunler", DEFAULT_SAFETY));
-  assert.throws(() => sanitizeQuery("UPDATE urunler SET stok = 0", DEFAULT_SAFETY));
+  assert.throws(() => sanitizeQuery("DELETE FROM products", DEFAULT_SAFETY));
+  assert.throws(() => sanitizeQuery("DROP TABLE products", DEFAULT_SAFETY));
+  assert.throws(() => sanitizeQuery("UPDATE products SET stock = 0", DEFAULT_SAFETY));
 });
 
 test("rejects data-modifying CTEs", () => {
   assert.throws(() =>
-    sanitizeQuery("WITH x AS (DELETE FROM urunler RETURNING id) SELECT * FROM x", DEFAULT_SAFETY),
+    sanitizeQuery("WITH x AS (DELETE FROM products RETURNING id) SELECT * FROM x", DEFAULT_SAFETY),
   );
 });
 
@@ -94,10 +94,10 @@ test("redacts restricted columns from rows", () => {
 test("isTableAllowed honors allow and block lists", () => {
   const blocked = { ...DEFAULT_SAFETY, blockedTables: ["secrets"] };
   assert.equal(isTableAllowed("secrets", blocked), false);
-  assert.equal(isTableAllowed("urunler", blocked), true);
+  assert.equal(isTableAllowed("products", blocked), true);
 
-  const allowed = { ...DEFAULT_SAFETY, allowedTables: ["urunler", "satislar"] };
-  assert.equal(isTableAllowed("urunler", allowed), true);
+  const allowed = { ...DEFAULT_SAFETY, allowedTables: ["products", "sales"] };
+  assert.equal(isTableAllowed("products", allowed), true);
   assert.equal(isTableAllowed("personel", allowed), false);
 });
 
@@ -108,7 +108,7 @@ test("isTableAllowed matches schema-qualified names", () => {
 
 test("filterTables drops disallowed tables", () => {
   const blocked = { ...DEFAULT_SAFETY, blockedTables: ["secrets"] };
-  assert.deepEqual(filterTables(["urunler", "secrets", "satislar"], blocked), ["urunler", "satislar"]);
+  assert.deepEqual(filterTables(["products", "secrets", "sales"], blocked), ["products", "sales"]);
 });
 
 test("maskRows applies partial, email, and full strategies", () => {

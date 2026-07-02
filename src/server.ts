@@ -37,7 +37,7 @@ export function createServer(driver: Driver, deps: ServerDeps = {}): McpServer {
       title: "Describe table",
       description:
         "Returns the columns of a table (name, type, nullability). Use it before writing a query.",
-      inputSchema: { table: z.string().describe("Exact table name, e.g. satislar") },
+      inputSchema: { table: z.string().describe("Exact table name, e.g. sales") },
     },
     async ({ table }) =>
       textResult(await run("describe_table", { table }, () => driver.describeTable(table))),
