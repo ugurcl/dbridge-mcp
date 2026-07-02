@@ -15,6 +15,10 @@ An <a href="https://modelcontextprotocol.io">MCP</a> server that lets an AI agen
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license">
 </p>
 
+<p align="center">
+  <img src="assets/demo.gif" alt="dbridge-mcp demo: an AI agent answering a question by querying the database" width="720">
+</p>
+
 The agent discovers the schema on its own (`list_tables`, `describe_table`), then writes and runs a `SELECT` for whatever the user asks. No hand-written endpoint per question.
 
 Works with **SQLite**, **PostgreSQL**, and **MySQL / MariaDB**.
