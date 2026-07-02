@@ -1,6 +1,14 @@
 import { DatabaseSync } from "node:sqlite";
 import type { Column, Driver, QueryResult } from "./types.js";
-import { redactRows, sanitizeQuery, visibleColumns, type SafetyConfig } from "../guard.js";
+import {
+  capRows,
+  filterTables,
+  isTableAllowed,
+  redactRows,
+  sanitizeQuery,
+  visibleColumns,
+  type SafetyConfig,
+} from "../guard.js";
 
 interface TableInfoRow {
   name: string;
@@ -21,15 +29,25 @@ export class SqliteDriver implements Driver {
   async listTables(): Promise<string[]> {
     const rows = this.db
       .prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        "SELECT name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name",
       )
       .all() as { name: string }[];
-    return rows.map((row) => row.name);
+    return filterTables(
+      rows.map((row) => row.name),
+      this.safety,
+    );
   }
 
   async describeTable(table: string): Promise<Column[]> {
-    const tables = await this.listTables();
-    if (!tables.includes(table)) {
+    if (!isTableAllowed(table, this.safety)) {
+      throw new Error(`Unknown table: ${table}`);
+    }
+    const rows = this.db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'",
+      )
+      .all() as { name: string }[];
+    if (!rows.some((row) => row.name === table)) {
       throw new Error(`Unknown table: ${table}`);
     }
     const info = this.db
@@ -44,13 +62,17 @@ export class SqliteDriver implements Driver {
   }
 
   async runQuery(sql: string): Promise<QueryResult> {
-    const statement = sanitizeQuery(sql, this.safety);
-    const rows = this.db.prepare(statement).all() as Record<string, unknown>[];
+    const { sql: statement, rowCap } = sanitizeQuery(sql, this.safety);
+    const start = Date.now();
+    const raw = this.db.prepare(statement).all() as Record<string, unknown>[];
+    const elapsedMs = Date.now() - start;
+    const { rows, truncated } = capRows(raw, rowCap);
     const visible = redactRows(rows, this.safety);
     return {
       rowCount: visible.length,
-      truncated: visible.length >= this.safety.maxRows,
+      truncated,
       rows: visible,
+      elapsedMs,
     };
   }
 

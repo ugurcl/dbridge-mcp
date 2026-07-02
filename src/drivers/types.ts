@@ -8,6 +8,7 @@ export interface QueryResult {
   rowCount: number;
   truncated: boolean;
   rows: Record<string, unknown>[];
+  elapsedMs: number;
 }
 
 export interface Driver {
