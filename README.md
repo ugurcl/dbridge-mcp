@@ -50,7 +50,7 @@ npx -y dbridge-mcp "postgresql://user:pass@host/db" --max-rows 200 --statement-t
 DBRIDGE_MAX_ROWS=200 DBRIDGE_REQUIRE_SSL=true npx -y dbridge-mcp "postgresql://user:pass@host/db"
 ```
 
-Or point `DBRIDGE_CONFIG` at a JSON file. Every field is optional:
+Or keep everything in one place: point `DBRIDGE_CONFIG` at a JSON file (see [`dbridge.config.example.json`](dbridge.config.example.json) for a full template). Every field is optional:
 
 ```json
 {

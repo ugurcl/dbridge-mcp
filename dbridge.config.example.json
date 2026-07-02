@@ -1,0 +1,17 @@
+{
+  "maxRows": 500,
+  "hiddenColumns": ["tc_kimlik", "parola"],
+  "maskedColumns": ["iban", { "column": "email", "strategy": "email" }],
+  "allowedTables": [],
+  "blockedTables": ["audit_log"],
+  "maxCost": 0,
+  "rateLimitPerMin": 0,
+  "statementTimeoutMs": 5000,
+  "maxCellChars": 0,
+  "maxResultBytes": 0,
+  "maxPoolSize": 5,
+  "connectionTimeoutMs": 10000,
+  "requireSsl": false,
+  "schemas": ["public"],
+  "auditLog": false
+}
