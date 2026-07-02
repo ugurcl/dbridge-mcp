@@ -3,6 +3,7 @@ import {
   capRows,
   filterTables,
   isTableAllowed,
+  maskRows,
   redactRows,
   sanitizeQuery,
   visibleColumns,
@@ -20,6 +21,7 @@ export interface SqlClient {
 export interface PostgresOptions {
   statementTimeoutMs: number;
   schemas: string[];
+  maxCost: number;
 }
 
 interface ColumnRow {
@@ -67,23 +69,14 @@ export class PostgresDriver implements Driver {
   async runQuery(sql: string): Promise<QueryResult> {
     const { sql: statement, rowCap } = sanitizeQuery(sql, this.safety);
     const start = Date.now();
-    const raw = await this.client.session(async (run) => {
-      await run("BEGIN TRANSACTION READ ONLY");
-      try {
-        if (this.options.statementTimeoutMs > 0) {
-          await run(`SET LOCAL statement_timeout = ${this.options.statementTimeoutMs}`);
-        }
-        const result = await run(statement);
-        await run("COMMIT");
-        return result.rows;
-      } catch (error) {
-        await run("ROLLBACK").catch(() => undefined);
-        throw error;
-      }
+    const raw = await this.readOnly(async (run) => {
+      await this.enforceCost(run, statement);
+      const result = await run(statement);
+      return result.rows;
     });
     const elapsedMs = Date.now() - start;
     const { rows, truncated } = capRows(raw, rowCap);
-    const visible = redactRows(rows, this.safety);
+    const visible = maskRows(redactRows(rows, this.safety), this.safety.maskedColumns);
     return {
       rowCount: visible.length,
       truncated,
@@ -92,8 +85,63 @@ export class PostgresDriver implements Driver {
     };
   }
 
+  async explainQuery(sql: string): Promise<unknown> {
+    const { sql: statement } = sanitizeQuery(sql, this.safety);
+    return this.readOnly(async (run) => {
+      const { rows } = await run(`EXPLAIN (FORMAT JSON) ${statement}`);
+      const plan = (rows[0] as { "QUERY PLAN"?: unknown })["QUERY PLAN"];
+      const totalCost = extractCost(plan);
+      return { totalCost, plan };
+    });
+  }
+
+  async countRows(table: string): Promise<number> {
+    if (!isTableAllowed(table, this.safety)) {
+      throw new Error(`Unknown table: ${table}`);
+    }
+    const columns = await this.fetchColumns(table);
+    if (columns.length === 0) {
+      throw new Error(`Unknown table: ${table}`);
+    }
+    const rows = await this.readOnly(async (run) => {
+      const result = await run(`SELECT count(*)::bigint AS count FROM ${quoteQualified(table)}`);
+      return result.rows;
+    });
+    return Number((rows[0] as { count: string | number }).count);
+  }
+
   async close(): Promise<void> {
     await this.closer();
+  }
+
+  private async readOnly<T>(fn: (run: Runner) => Promise<T>): Promise<T> {
+    return this.client.session(async (run) => {
+      await run("BEGIN TRANSACTION READ ONLY");
+      try {
+        if (this.options.statementTimeoutMs > 0) {
+          await run(`SET LOCAL statement_timeout = ${this.options.statementTimeoutMs}`);
+        }
+        const result = await fn(run);
+        await run("COMMIT");
+        return result;
+      } catch (error) {
+        await run("ROLLBACK").catch(() => undefined);
+        throw error;
+      }
+    });
+  }
+
+  private async enforceCost(run: Runner, statement: string): Promise<void> {
+    if (this.options.maxCost <= 0) {
+      return;
+    }
+    const { rows } = await run(`EXPLAIN (FORMAT JSON) ${statement}`);
+    const cost = extractCost((rows[0] as { "QUERY PLAN"?: unknown })["QUERY PLAN"]);
+    if (cost !== undefined && cost > this.options.maxCost) {
+      throw new Error(
+        `Query rejected: estimated cost ${Math.round(cost)} exceeds the limit of ${this.options.maxCost}. Narrow the query (add filters or a smaller range).`,
+      );
+    }
   }
 
   private async fetchColumns(table: string): Promise<ColumnRow[]> {
@@ -113,4 +161,20 @@ export class PostgresDriver implements Driver {
     );
     return rows as unknown as ColumnRow[];
   }
+}
+
+function extractCost(plan: unknown): number | undefined {
+  const node = Array.isArray(plan) ? plan[0] : plan;
+  if (node && typeof node === "object" && "Plan" in node) {
+    const inner = (node as { Plan: { "Total Cost"?: number } }).Plan;
+    return typeof inner["Total Cost"] === "number" ? inner["Total Cost"] : undefined;
+  }
+  return undefined;
+}
+
+function quoteQualified(name: string): string {
+  return name
+    .split(".")
+    .map((part) => `"${part.replace(/"/g, '""')}"`)
+    .join(".");
 }

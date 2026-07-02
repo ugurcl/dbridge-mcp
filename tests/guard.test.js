@@ -4,6 +4,7 @@ import {
   sanitizeQuery,
   visibleColumns,
   redactRows,
+  maskRows,
   isTableAllowed,
   filterTables,
   capRows,
@@ -106,6 +107,26 @@ test("isTableAllowed matches schema-qualified names", () => {
 test("filterTables drops disallowed tables", () => {
   const blocked = { ...DEFAULT_SAFETY, blockedTables: ["secrets"] };
   assert.deepEqual(filterTables(["urunler", "secrets", "satislar"], blocked), ["urunler", "satislar"]);
+});
+
+test("maskRows applies partial, email, and full strategies", () => {
+  const specs = [
+    { column: "iban", strategy: "partial", keep: 4 },
+    { column: "email", strategy: "email", keep: 4 },
+    { column: "token", strategy: "full", keep: 0 },
+  ];
+  const masked = maskRows(
+    [{ iban: "TR120001", email: "ayse@site.com", token: "secret", ad: "Ayşe" }],
+    specs,
+  );
+  assert.deepEqual(masked, [
+    { iban: "****0001", email: "a***@site.com", token: "***", ad: "Ayşe" },
+  ]);
+});
+
+test("maskRows leaves nulls and unlisted columns untouched", () => {
+  const specs = [{ column: "iban", strategy: "partial", keep: 4 }];
+  assert.deepEqual(maskRows([{ iban: null, ad: "x" }], specs), [{ iban: null, ad: "x" }]);
 });
 
 test("capRows slices to the cap and flags truncation", () => {

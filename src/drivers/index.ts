@@ -37,7 +37,11 @@ export function createDriver(
       return new PostgresDriver(
         client,
         safety,
-        { statementTimeoutMs: options.statementTimeoutMs, schemas: options.schemas },
+        {
+          statementTimeoutMs: options.statementTimeoutMs,
+          schemas: options.schemas,
+          maxCost: options.maxCost,
+        },
         () => pool.end(),
       );
     }

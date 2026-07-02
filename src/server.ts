@@ -2,9 +2,19 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Driver } from "./drivers/types.js";
 import type { AuditFn } from "./audit.js";
+import type { RateLimiter } from "./rate-limit.js";
 
-export function createServer(driver: Driver, audit: AuditFn = () => undefined): McpServer {
-  const server = new McpServer({ name: "dbridge-mcp", version: "0.4.0" });
+export interface ServerDeps {
+  audit?: AuditFn;
+  limiter?: RateLimiter;
+  limits?: Record<string, unknown>;
+}
+
+export function createServer(driver: Driver, deps: ServerDeps = {}): McpServer {
+  const audit = deps.audit ?? (() => undefined);
+  const limiter = deps.limiter ?? { take: () => undefined };
+  const limits = deps.limits ?? {};
+  const server = new McpServer({ name: "dbridge-mcp", version: "0.5.0" });
 
   const run = <T>(tool: string, details: Record<string, unknown>, action: () => Promise<T>) =>
     track(tool, details, audit, action);
@@ -46,8 +56,25 @@ export function createServer(driver: Driver, audit: AuditFn = () => undefined): 
     async ({ table, limit }) =>
       textResult(
         await run("sample_table", { table, limit }, async () => {
+          limiter.take();
           await driver.describeTable(table);
           return driver.runQuery(`SELECT * FROM ${quoteQualified(table)} LIMIT ${limit ?? 10}`);
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "count_rows",
+    {
+      title: "Count table rows",
+      description: "Returns the exact number of rows in a table.",
+      inputSchema: { table: z.string().describe("Exact table name") },
+    },
+    async ({ table }) =>
+      textResult(
+        await run("count_rows", { table }, () => {
+          limiter.take();
+          return driver.countRows(table).then((count) => ({ table, count }));
         }),
       ),
   );
@@ -66,7 +93,37 @@ export function createServer(driver: Driver, audit: AuditFn = () => undefined): 
           ),
       },
     },
-    async ({ sql }) => textResult(await run("run_query", { sql }, () => driver.runQuery(sql))),
+    async ({ sql }) =>
+      textResult(
+        await run("run_query", { sql }, () => {
+          limiter.take();
+          return driver.runQuery(sql);
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "explain_query",
+    {
+      title: "Explain a query",
+      description:
+        "Returns the query plan and estimated cost without running the query. Use it to check a query is cheap before running it.",
+      inputSchema: {
+        sql: z.string().describe("A single read-only SELECT or WITH statement to analyze"),
+      },
+    },
+    async ({ sql }) => textResult(await run("explain_query", { sql }, () => driver.explainQuery(sql))),
+  );
+
+  server.registerTool(
+    "get_limits",
+    {
+      title: "Get active limits",
+      description:
+        "Returns the safety limits in effect (row cap, timeout, cost/rate limits, hidden and masked columns, table allow/block lists).",
+      inputSchema: {},
+    },
+    async () => textResult(await run("get_limits", {}, async () => limits)),
   );
 
   server.registerResource(

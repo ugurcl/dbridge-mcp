@@ -4,6 +4,7 @@ import {
   capRows,
   filterTables,
   isTableAllowed,
+  maskRows,
   redactRows,
   sanitizeQuery,
   visibleColumns,
@@ -67,13 +68,36 @@ export class SqliteDriver implements Driver {
     const raw = this.db.prepare(statement).all() as Record<string, unknown>[];
     const elapsedMs = Date.now() - start;
     const { rows, truncated } = capRows(raw, rowCap);
-    const visible = redactRows(rows, this.safety);
+    const visible = maskRows(redactRows(rows, this.safety), this.safety.maskedColumns);
     return {
       rowCount: visible.length,
       truncated,
       rows: visible,
       elapsedMs,
     };
+  }
+
+  async explainQuery(sql: string): Promise<unknown> {
+    const { sql: statement } = sanitizeQuery(sql, this.safety);
+    const plan = this.db.prepare(`EXPLAIN QUERY PLAN ${statement}`).all() as Record<
+      string,
+      unknown
+    >[];
+    return { plan };
+  }
+
+  async countRows(table: string): Promise<number> {
+    if (!isTableAllowed(table, this.safety)) {
+      throw new Error(`Unknown table: ${table}`);
+    }
+    const tables = await this.listTables();
+    if (!tables.includes(table)) {
+      throw new Error(`Unknown table: ${table}`);
+    }
+    const row = this.db
+      .prepare(`SELECT count(*) AS count FROM ${quoteIdent(table)}`)
+      .get() as { count: number };
+    return Number(row.count);
   }
 
   async close(): Promise<void> {

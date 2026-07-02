@@ -1,10 +1,19 @@
 import type { Column } from "./drivers/types.js";
 
+export type MaskStrategy = "partial" | "email" | "full";
+
+export interface MaskSpec {
+  column: string;
+  strategy: MaskStrategy;
+  keep: number;
+}
+
 export interface SafetyConfig {
   maxRows: number;
   hiddenColumns: string[];
   allowedTables: string[];
   blockedTables: string[];
+  maskedColumns: MaskSpec[];
 }
 
 export const DEFAULT_SAFETY: SafetyConfig = {
@@ -12,6 +21,7 @@ export const DEFAULT_SAFETY: SafetyConfig = {
   hiddenColumns: [],
   allowedTables: [],
   blockedTables: [],
+  maskedColumns: [],
 };
 
 export interface SanitizedQuery {
@@ -119,6 +129,51 @@ export function isTableAllowed(name: string, config: SafetyConfig): boolean {
 
 export function filterTables(names: string[], config: SafetyConfig): string[] {
   return names.filter((name) => isTableAllowed(name, config));
+}
+
+export function maskRows(
+  rows: Record<string, unknown>[],
+  specs: MaskSpec[],
+): Record<string, unknown>[] {
+  if (!specs || specs.length === 0) {
+    return rows;
+  }
+  const byColumn = new Map(specs.map((spec) => [spec.column.toLowerCase(), spec]));
+  return rows.map((row) => {
+    const out: Record<string, unknown> = { ...row };
+    for (const key of Object.keys(out)) {
+      const spec = byColumn.get(key.toLowerCase());
+      if (spec) {
+        out[key] = maskValue(out[key], spec);
+      }
+    }
+    return out;
+  });
+}
+
+function maskValue(value: unknown, spec: MaskSpec): unknown {
+  if (value === null || value === undefined) {
+    return value;
+  }
+  const text = String(value);
+  if (spec.strategy === "full") {
+    return "***";
+  }
+  if (spec.strategy === "email") {
+    const at = text.indexOf("@");
+    if (at <= 0) {
+      return maskPartial(text, spec.keep);
+    }
+    return `${text[0]}***${text.slice(at)}`;
+  }
+  return maskPartial(text, spec.keep);
+}
+
+function maskPartial(text: string, keep: number): string {
+  if (text.length <= keep) {
+    return "*".repeat(text.length);
+  }
+  return "*".repeat(text.length - keep) + text.slice(text.length - keep);
 }
 
 export function capRows(

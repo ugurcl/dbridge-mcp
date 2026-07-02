@@ -23,7 +23,13 @@ before(async () => {
   await pg.exec("CREATE TABLE secrets (token TEXT); INSERT INTO secrets VALUES ('x');");
   driver = new PostgresDriver(
     makeClient(pg),
-    { maxRows: 1000, hiddenColumns: ["maas"], allowedTables: [], blockedTables: ["secrets"] },
+    {
+      maxRows: 1000,
+      hiddenColumns: ["maas"],
+      allowedTables: [],
+      blockedTables: ["secrets"],
+      maskedColumns: [],
+    },
     options,
     () => pg.close(),
   );
@@ -71,11 +77,51 @@ test("blocks queries against a blocked table", async () => {
 test("enforces the row cap over a larger user limit", async () => {
   const capped = new PostgresDriver(
     makeClient(pg),
-    { maxRows: 1, hiddenColumns: [], allowedTables: [], blockedTables: [] },
+    { maxRows: 1, hiddenColumns: [], allowedTables: [], blockedTables: [], maskedColumns: [] },
     options,
     async () => undefined,
   );
   const result = await capped.runQuery("SELECT * FROM personel LIMIT 1000");
   assert.equal(result.rowCount, 1);
   assert.equal(result.truncated, true);
+});
+
+test("counts rows", async () => {
+  assert.equal(await driver.countRows("personel"), 2);
+});
+
+test("refuses to count a blocked table", async () => {
+  await assert.rejects(() => driver.countRows("secrets"));
+});
+
+test("explains a query with an estimated cost", async () => {
+  const result = await driver.explainQuery("SELECT * FROM personel");
+  assert.equal(typeof result.totalCost, "number");
+});
+
+test("rejects queries above the cost limit", async () => {
+  const strict = new PostgresDriver(
+    makeClient(pg),
+    { maxRows: 1000, hiddenColumns: [], allowedTables: [], blockedTables: [], maskedColumns: [] },
+    { statementTimeoutMs: 0, schemas: ["public"], maxCost: 0.001 },
+    async () => undefined,
+  );
+  await assert.rejects(() => strict.runQuery("SELECT * FROM personel"), /estimated cost/);
+});
+
+test("masks configured columns in results", async () => {
+  const masking = new PostgresDriver(
+    makeClient(pg),
+    {
+      maxRows: 1000,
+      hiddenColumns: [],
+      allowedTables: [],
+      blockedTables: [],
+      maskedColumns: [{ column: "ad", strategy: "full", keep: 0 }],
+    },
+    options,
+    async () => undefined,
+  );
+  const result = await masking.runQuery("SELECT ad FROM personel ORDER BY ad");
+  assert.ok(result.rows.every((row) => row.ad === "***"));
 });

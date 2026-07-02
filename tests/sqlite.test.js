@@ -23,6 +23,7 @@ before(() => {
     hiddenColumns: ["maas"],
     allowedTables: [],
     blockedTables: ["secrets"],
+    maskedColumns: [],
   });
 });
 
@@ -77,9 +78,41 @@ test("enforces the row cap over a larger user limit", async () => {
     hiddenColumns: [],
     allowedTables: [],
     blockedTables: [],
+    maskedColumns: [],
   });
   const result = await capped.runQuery("SELECT * FROM n LIMIT 1000");
   assert.equal(result.rowCount, 1);
   assert.equal(result.truncated, true);
   await capped.close();
+});
+
+test("counts rows", async () => {
+  assert.equal(await driver.countRows("personel"), 2);
+});
+
+test("refuses to count a blocked table", async () => {
+  await assert.rejects(() => driver.countRows("secrets"));
+});
+
+test("explains a query", async () => {
+  const result = await driver.explainQuery("SELECT * FROM personel");
+  assert.ok(Array.isArray(result.plan));
+});
+
+test("masks configured columns in results", async () => {
+  const path = join(dir, "mask.db");
+  const seed = new DatabaseSync(path);
+  seed.exec("CREATE TABLE m (email TEXT);");
+  seed.exec("INSERT INTO m VALUES ('ayse@site.com');");
+  seed.close();
+  const masking = new SqliteDriver(path, {
+    maxRows: 1000,
+    hiddenColumns: [],
+    allowedTables: [],
+    blockedTables: [],
+    maskedColumns: [{ column: "email", strategy: "email", keep: 4 }],
+  });
+  const result = await masking.runQuery("SELECT email FROM m");
+  assert.equal(result.rows[0].email, "a***@site.com");
+  await masking.close();
 });
