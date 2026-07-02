@@ -43,10 +43,10 @@ A raw LLM cannot know what is inside your database, and web search cannot reach 
 
 ## Safety
 
-- The connection is opened read-only. On PostgreSQL every query also runs inside a `READ ONLY` transaction, so writes are rejected by the database itself even if a query slips past the guard.
+- The connection is opened read-only. On PostgreSQL and MySQL every query also runs inside a `READ ONLY` transaction, so writes are rejected by the database itself even if a query slips past the guard.
 - Only `SELECT` and `WITH` statements pass; writes, DDL, and data-modifying CTEs are rejected.
 - A single statement per call; the row cap is enforced even when a query supplies its own larger `LIMIT` (default 1000 rows).
-- Each PostgreSQL query is bounded by a `statement_timeout`, so a runaway or expensive query cannot pin the database.
+- Each PostgreSQL and MySQL query is bounded by a per-query timeout (`statement_timeout` / `max_execution_time`), so a runaway or expensive query cannot pin the database.
 - System catalogs and credential tables (`information_schema`, `pg_authid`, `sqlite_master`, …) are not queryable; schema discovery goes through the tools.
 - Restricted columns can be hidden entirely: the model cannot see them in the schema, query them, or receive them in results.
 - Tables can be restricted with an allow-list or block-list; blocked tables are invisible and unqueryable.
@@ -95,13 +95,15 @@ Or keep everything in one place: point `DBRIDGE_CONFIG` at a JSON file (see [`db
 | `statementTimeoutMs` | `--statement-timeout-ms` / `DBRIDGE_STATEMENT_TIMEOUT_MS` | `10000` | Per-query timeout (PostgreSQL `statement_timeout`, MySQL `max_execution_time`); `0` disables. |
 | `maxCost` | `--max-cost` / `DBRIDGE_MAX_COST` | `0` | Reject queries whose `EXPLAIN` cost estimate exceeds this (PostgreSQL/MySQL); `0` disables. |
 | `rateLimitPerMin` | `--rate-limit-per-min` / `DBRIDGE_RATE_LIMIT_PER_MIN` | `0` | Max query-executing tool calls per minute; `0` disables. |
-| `maxPoolSize` | `--max-pool-size` / `DBRIDGE_MAX_POOL_SIZE` | `5` | Maximum PostgreSQL connections. |
-| `connectionTimeoutMs` | `--connection-timeout-ms` / `DBRIDGE_CONNECTION_TIMEOUT_MS` | `10000` | How long to wait for a connection. |
-| `requireSsl` | `--require-ssl` / `DBRIDGE_REQUIRE_SSL` | `false` | Require a verified TLS connection (PostgreSQL). |
+| `maxPoolSize` | `--max-pool-size` / `DBRIDGE_MAX_POOL_SIZE` | `5` | Maximum pooled connections (PostgreSQL/MySQL). |
+| `connectionTimeoutMs` | `--connection-timeout-ms` / `DBRIDGE_CONNECTION_TIMEOUT_MS` | `10000` | How long to wait for a connection (PostgreSQL/MySQL). |
+| `requireSsl` | `--require-ssl` / `DBRIDGE_REQUIRE_SSL` | `false` | Require a verified TLS connection (PostgreSQL/MySQL). |
 | `schemas` | `--schemas` / `DBRIDGE_SCHEMAS` | `["public"]` | PostgreSQL-only: schemas to expose; multiple schemas yield `schema.table` names. |
 | `auditLog` | `--audit-log` / `DBRIDGE_AUDIT_LOG` | `false` | Log every tool call (query, rows, duration, errors) as JSON to stderr. |
 
 List values on the command line or in env vars are comma-separated (`--allowed-tables urunler,satislar`).
+
+Engine note: `statementTimeoutMs`, `maxCost`, `maxPoolSize`, `connectionTimeoutMs`, `requireSsl`, and `schemas` apply to the networked engines (PostgreSQL/MySQL). SQLite is a local file, so it ignores them; the row cap, column/table access control, and masking apply to every engine.
 
 ### Column masking
 
@@ -261,6 +263,10 @@ To tune the safety guard, point the server at a config file with the `environmen
 ```json
 "environment": { "DBRIDGE_CONFIG": "/absolute/path/to/dbridge.config.json" }
 ```
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
