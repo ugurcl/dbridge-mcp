@@ -193,24 +193,51 @@ Then call the tools from the Inspector UI. No LLM or API key needed.
 npm test
 ```
 
+> **Windows note:** MCP clients cannot launch `npx` directly on Windows because it is a `.cmd` script. Wrap it with `cmd /c` — use `"command": "cmd"` and put `"/c", "npx", "-y", "dbridge-mcp", "<connection>"` in the args. The examples below use the direct form (macOS/Linux); on Windows add the `cmd /c` prefix.
+
 ## Use it in Claude Desktop
 
-Add to `claude_desktop_config.json`:
+Claude Desktop only supports a single global config. Add to `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "dbridge": {
       "command": "npx",
-      "args": ["-y", "dbridge-mcp", "postgresql://user:pass@host:5432/mydb"]
+      "args": ["-y", "dbridge-mcp", "postgresql://user:pass@host:5432/mydb"],
+      "env": { "DBRIDGE_CONFIG": "/absolute/path/to/dbridge.config.json" }
     }
   }
 }
 ```
 
-For a local SQLite file, replace the connection string with an absolute path to the `.db` file.
+For a local SQLite file, replace the connection string with an absolute path to the `.db` file. Restart Claude Desktop, then ask: _"geçen ay en çok satan 5 ürün ne?"_
 
-Restart Claude Desktop, then ask: _"geçen ay en çok satan 5 ürün ne?"_
+## Use it in Claude Code
+
+Add it to the current project with the CLI:
+
+```bash
+claude mcp add dbridge --scope project \
+  -e DBRIDGE_CONFIG=/absolute/path/to/dbridge.config.json \
+  -- npx -y dbridge-mcp "postgresql://user:pass@host:5432/mydb"
+```
+
+`--scope project` writes a shareable `.mcp.json` in the project root; use `--scope user` for a global server or omit it for a private per-project one. The `.mcp.json` looks like:
+
+```json
+{
+  "mcpServers": {
+    "dbridge": {
+      "command": "npx",
+      "args": ["-y", "dbridge-mcp", "postgresql://user:pass@host:5432/mydb"],
+      "env": { "DBRIDGE_CONFIG": "/absolute/path/to/dbridge.config.json" }
+    }
+  }
+}
+```
+
+Run `claude` from that directory; approve the project server once, then check it with `/mcp`.
 
 ## Use it in OpenCode
 
