@@ -51,7 +51,13 @@ export function createServer(driver: Driver): McpServer {
       title: "Run a read-only SQL query",
       description:
         "Runs a single read-only SELECT or WITH statement and returns the rows as JSON. Writes are rejected and results are capped.",
-      inputSchema: { sql: z.string().describe("A single SQLite SELECT statement") },
+      inputSchema: {
+        sql: z
+          .string()
+          .describe(
+            "A single read-only SELECT or WITH statement, written in the connected database's SQL dialect",
+          ),
+      },
     },
     async ({ sql }) => textResult(await driver.runQuery(sql)),
   );
