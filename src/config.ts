@@ -12,14 +12,18 @@ export function loadConfig(): AppConfig {
   const connection = process.env.DBRIDGE_DB_PATH ?? process.argv[2];
   if (!connection) {
     throw new Error(
-      "No database provided. Set DBRIDGE_DB_PATH or pass a sqlite file path as the first argument.",
+      "No database provided. Set DBRIDGE_DB_PATH or pass a sqlite file path or a postgres:// connection string as the first argument.",
     );
   }
   return {
-    kind: "sqlite",
+    kind: detectKind(connection),
     connection,
     safety: loadSafety(),
   };
+}
+
+function detectKind(connection: string): DriverKind {
+  return /^postgres(ql)?:\/\//i.test(connection) ? "postgres" : "sqlite";
 }
 
 function loadSafety(): SafetyConfig {
