@@ -47,21 +47,33 @@ Point `DBRIDGE_CONFIG` at a JSON file to tune the guard:
 
 Node.js 22.5+ (SQLite uses the built-in `node:sqlite`, no native build step).
 
-## Setup
+## Install
+
+The published package ships a `dbridge-mcp` binary, so no clone or build step is needed to use it. Point it at a database with the connection argument:
+
+```bash
+npx -y dbridge-mcp demo.db                                  # SQLite (file path)
+npx -y dbridge-mcp "postgresql://user:pass@host:5432/mydb"  # PostgreSQL
+```
+
+Or install it once, globally:
+
+```bash
+npm install -g dbridge-mcp
+dbridge-mcp "postgresql://user:pass@host:5432/mydb"
+```
+
+MCP clients start the server for you as a subprocess — see the client sections below.
+
+## Local development
+
+To hack on dbridge itself, clone the repo and build from source:
 
 ```bash
 npm install
 npm run build
 npm run seed        # creates demo.db (a small store: urunler, musteriler, satislar)
-```
-
-## Databases
-
-The database is chosen from the connection argument:
-
-```bash
-node dist/index.js demo.db                                  # SQLite (file path)
-node dist/index.js "postgresql://user:pass@host:5432/mydb"  # PostgreSQL
+node dist/index.js demo.db
 ```
 
 ## Try it with the MCP Inspector
@@ -86,14 +98,39 @@ Add to `claude_desktop_config.json`:
 {
   "mcpServers": {
     "dbridge": {
-      "command": "node",
-      "args": ["ABSOLUTE/PATH/dbridge-mcp/dist/index.js", "ABSOLUTE/PATH/dbridge-mcp/demo.db"]
+      "command": "npx",
+      "args": ["-y", "dbridge-mcp", "postgresql://user:pass@host:5432/mydb"]
     }
   }
 }
 ```
 
+For a local SQLite file, replace the connection string with an absolute path to the `.db` file.
+
 Restart Claude Desktop, then ask: _"geçen ay en çok satan 5 ürün ne?"_
+
+## Use it in OpenCode
+
+Add to `opencode.json` (project root or `~/.config/opencode/opencode.json`):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "dbridge": {
+      "type": "local",
+      "command": ["npx", "-y", "dbridge-mcp", "postgresql://user:pass@host:5432/mydb"],
+      "enabled": true
+    }
+  }
+}
+```
+
+To tune the safety guard, point the server at a config file with the `environment` block:
+
+```json
+"environment": { "DBRIDGE_CONFIG": "/absolute/path/to/dbridge.config.json" }
+```
 
 ## License
 
