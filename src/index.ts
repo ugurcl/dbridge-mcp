@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { resolveDatabasePath } from "./config.js";
-import { openDatabase } from "./db.js";
+import { loadConfig } from "./config.js";
+import { createDriver } from "./drivers/index.js";
 import { createServer } from "./server.js";
 
 async function main(): Promise<void> {
-  const db = openDatabase(resolveDatabasePath());
-  const server = createServer(db);
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+  const config = loadConfig();
+  const driver = createDriver(config.kind, config.connection, config.safety);
+  const server = createServer(driver);
+  await server.connect(new StdioServerTransport());
 }
 
 main().catch((error: unknown) => {
