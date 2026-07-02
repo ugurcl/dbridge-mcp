@@ -17,7 +17,10 @@ A raw LLM cannot know what is inside your database, and web search cannot reach 
 | `list_tables` | List every table in the database. |
 | `describe_table` | Return a table's columns and types. |
 | `sample_table` | Preview the first rows of a table. |
+| `count_rows` | Return the exact row count of a table. |
 | `run_query` | Run a single read-only `SELECT` / `WITH` and return rows as JSON. |
+| `explain_query` | Return a query's plan and estimated cost without running it. |
+| `get_limits` | Report the safety limits in effect (caps, timeouts, hidden/masked columns). |
 
 ## Resources
 
@@ -34,19 +37,31 @@ A raw LLM cannot know what is inside your database, and web search cannot reach 
 - System catalogs and credential tables (`information_schema`, `pg_authid`, `sqlite_master`, …) are not queryable; schema discovery goes through the tools.
 - Restricted columns can be hidden entirely: the model cannot see them in the schema, query them, or receive them in results.
 - Tables can be restricted with an allow-list or block-list; blocked tables are invisible and unqueryable.
+- Columns can be masked instead of hidden: they stay visible but values come back partially redacted (e.g. `a***@site.com`).
+- Expensive queries can be rejected up front by an `EXPLAIN` cost estimate, and callers can be rate-limited per minute.
 - The connection pool size is capped, so dbridge cannot exhaust the database's connections.
 
-### Safety config
+### Config
 
-Point `DBRIDGE_CONFIG` at a JSON file to tune the guard. Every field is optional:
+Every setting has three sources, in increasing precedence: a JSON file (`DBRIDGE_CONFIG`), environment variables, then CLI flags. So you can drop the JSON file entirely and set only what you need:
+
+```bash
+npx -y dbridge-mcp "postgresql://user:pass@host/db" --max-rows 200 --statement-timeout-ms 3000 --masked-columns email,iban
+DBRIDGE_MAX_ROWS=200 DBRIDGE_REQUIRE_SSL=true npx -y dbridge-mcp "postgresql://user:pass@host/db"
+```
+
+Or point `DBRIDGE_CONFIG` at a JSON file. Every field is optional:
 
 ```json
 {
   "maxRows": 500,
-  "hiddenColumns": ["maas", "tc_kimlik", "parola"],
+  "hiddenColumns": ["tc_kimlik", "parola"],
+  "maskedColumns": ["iban", { "column": "email", "strategy": "email" }],
   "allowedTables": ["urunler", "satislar", "musteriler"],
   "blockedTables": ["personel", "audit_log"],
   "statementTimeoutMs": 5000,
+  "maxCost": 100000,
+  "rateLimitPerMin": 60,
   "maxPoolSize": 5,
   "connectionTimeoutMs": 10000,
   "requireSsl": true,
@@ -55,24 +70,41 @@ Point `DBRIDGE_CONFIG` at a JSON file to tune the guard. Every field is optional
 }
 ```
 
-| Field | Default | Purpose |
+| Field | CLI flag / env var | Default | Purpose |
+| --- | --- | --- | --- |
+| `maxRows` | `--max-rows` / `DBRIDGE_MAX_ROWS` | `1000` | Hard cap on rows returned per query, enforced even over a larger `LIMIT`. |
+| `hiddenColumns` | `--hidden-columns` / `DBRIDGE_HIDDEN_COLUMNS` | `[]` | Columns hidden from the schema, queries, and results. |
+| `maskedColumns` | `--masked-columns` / `DBRIDGE_MASKED_COLUMNS` | `[]` | Columns whose values are redacted in results (see below). |
+| `allowedTables` | `--allowed-tables` / `DBRIDGE_ALLOWED_TABLES` | `[]` | If non-empty, only these tables are exposed. |
+| `blockedTables` | `--blocked-tables` / `DBRIDGE_BLOCKED_TABLES` | `[]` | Tables that are always hidden and unqueryable. |
+| `statementTimeoutMs` | `--statement-timeout-ms` / `DBRIDGE_STATEMENT_TIMEOUT_MS` | `10000` | PostgreSQL per-query timeout; `0` disables. |
+| `maxCost` | `--max-cost` / `DBRIDGE_MAX_COST` | `0` | Reject queries whose PostgreSQL `EXPLAIN` cost exceeds this; `0` disables. |
+| `rateLimitPerMin` | `--rate-limit-per-min` / `DBRIDGE_RATE_LIMIT_PER_MIN` | `0` | Max query-executing tool calls per minute; `0` disables. |
+| `maxPoolSize` | `--max-pool-size` / `DBRIDGE_MAX_POOL_SIZE` | `5` | Maximum PostgreSQL connections. |
+| `connectionTimeoutMs` | `--connection-timeout-ms` / `DBRIDGE_CONNECTION_TIMEOUT_MS` | `10000` | How long to wait for a connection. |
+| `requireSsl` | `--require-ssl` / `DBRIDGE_REQUIRE_SSL` | `false` | Require a verified TLS connection (PostgreSQL). |
+| `schemas` | `--schemas` / `DBRIDGE_SCHEMAS` | `["public"]` | PostgreSQL schemas to expose; multiple schemas yield `schema.table` names. |
+| `auditLog` | `--audit-log` / `DBRIDGE_AUDIT_LOG` | `false` | Log every tool call (query, rows, duration, errors) as JSON to stderr. |
+
+List values on the command line or in env vars are comma-separated (`--allowed-tables urunler,satislar`).
+
+### Column masking
+
+`maskedColumns` keeps a column visible but redacts its values. Each entry is either a column name (defaults to the `partial` strategy) or an object `{ "column": ..., "strategy": ..., "keep": ... }`:
+
+| Strategy | Example input | Output |
 | --- | --- | --- |
-| `maxRows` | `1000` | Hard cap on rows returned per query. |
-| `hiddenColumns` | `[]` | Columns hidden from the schema, queries, and results. |
-| `allowedTables` | `[]` | If non-empty, only these tables are exposed. |
-| `blockedTables` | `[]` | Tables that are always hidden and unqueryable. |
-| `statementTimeoutMs` | `10000` | PostgreSQL per-query timeout; `0` disables. |
-| `maxPoolSize` | `5` | Maximum PostgreSQL connections. |
-| `connectionTimeoutMs` | `10000` | How long to wait for a connection. |
-| `requireSsl` | `false` | Require a verified TLS connection (PostgreSQL). |
-| `schemas` | `["public"]` | PostgreSQL schemas to expose; multiple schemas yield `schema.table` names. |
-| `auditLog` | `false` | Log every tool call (query, rows, duration, errors) as JSON to stderr. Also enabled by `DBRIDGE_AUDIT_LOG=1`. |
+| `partial` (default) | `TR120000123456` | `**********3456` (keeps the last `keep`, default 4) |
+| `email` | `ayse@site.com` | `a***@site.com` |
+| `full` | anything | `***` |
+
+Unlike `hiddenColumns`, a masked column can still be used in `WHERE`/`GROUP BY`, so use `hiddenColumns` for true secrets and `maskedColumns` for values that should be recognizable but not exposed.
 
 ### Running against a production database
 
 - Pass the connection string via the `DBRIDGE_DB_PATH` environment variable instead of the command line, so the password does not appear in the process list.
 - Prefer a dedicated database role with read-only grants on only the tables you want exposed — that is the real security boundary; the guard is defense in depth.
-- Set a conservative `statementTimeoutMs` and `maxRows`, and use `allowedTables` to expose only reporting tables.
+- Set a conservative `statementTimeoutMs`, `maxRows`, and `maxCost`, and use `allowedTables` to expose only reporting tables.
 
 ## Requirements
 
