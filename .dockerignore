@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.github
+tests
+assets
+*.db
+*.db-shm
+*.db-wal
+*.log
+opencode.json
+dbridge.config.json
