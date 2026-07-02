@@ -8,6 +8,13 @@
 An <a href="https://modelcontextprotocol.io">MCP</a> server that lets an AI agent query a SQL database in plain language — safely and read-only.
 </p>
 
+<p align="center">
+  <a href="https://github.com/ugurcl/dbridge-mcp/actions/workflows/ci.yml"><img src="https://github.com/ugurcl/dbridge-mcp/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://www.npmjs.com/package/dbridge-mcp"><img src="https://img.shields.io/npm/v/dbridge-mcp.svg" alt="npm"></a>
+  <img src="https://img.shields.io/badge/node-%3E%3D22.5-brightgreen.svg" alt="node >=22.5">
+  <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license">
+</p>
+
 The agent discovers the schema on its own (`list_tables`, `describe_table`), then writes and runs a `SELECT` for whatever the user asks. No hand-written endpoint per question.
 
 Works with **SQLite**, **PostgreSQL**, and **MySQL / MariaDB**.
@@ -142,6 +149,24 @@ dbridge-mcp "postgresql://user:pass@host:5432/mydb"
 ```
 
 MCP clients start the server for you as a subprocess — see the client sections below.
+
+## Docker
+
+Build the image and run the server over stdio:
+
+```bash
+docker build -t dbridge-mcp .
+docker run --rm -i dbridge-mcp "postgresql://user:pass@host:5432/mydb"
+```
+
+Mount a config file and point `DBRIDGE_CONFIG` at it:
+
+```bash
+docker run --rm -i \
+  -v "$PWD/dbridge.config.json:/config.json:ro" \
+  -e DBRIDGE_CONFIG=/config.json \
+  dbridge-mcp "postgresql://user:pass@host:5432/mydb"
+```
 
 ## Local development
 
