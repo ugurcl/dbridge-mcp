@@ -41,6 +41,118 @@ A raw LLM cannot know what is inside your database, and web search cannot reach 
 | --- | --- |
 | `dbridge://schema` | The full schema (every table and its columns) as one JSON document. |
 
+## Requirements
+
+Node.js 22.5+ (SQLite uses the built-in `node:sqlite`, no native build step).
+
+## Install
+
+The published package ships a `dbridge-mcp` binary, so no clone or build step is needed to use it. Point it at a database with the connection argument:
+
+```bash
+npx -y dbridge-mcp demo.db                                  # SQLite (file path)
+npx -y dbridge-mcp "postgresql://user:pass@host:5432/mydb"  # PostgreSQL
+npx -y dbridge-mcp "mysql://user:pass@host:3306/mydb"       # MySQL / MariaDB
+```
+
+The database engine is chosen from the connection string: a file path is SQLite, `postgres://` / `postgresql://` is PostgreSQL, and `mysql://` is MySQL/MariaDB.
+
+Or install it once, globally:
+
+```bash
+npm install -g dbridge-mcp
+dbridge-mcp "postgresql://user:pass@host:5432/mydb"
+```
+
+MCP clients start the server for you as a subprocess — see the client sections below.
+
+> **Windows note:** MCP clients cannot launch `npx` directly on Windows because it is a `.cmd` script. Wrap it with `cmd /c` — use `"command": "cmd"` and put `"/c", "npx", "-y", "dbridge-mcp", "<connection>"` in the args. The examples below use the direct form (macOS/Linux); on Windows add the `cmd /c` prefix.
+
+## Use it in Claude Desktop
+
+Claude Desktop only supports a single global config. Add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "dbridge": {
+      "command": "npx",
+      "args": ["-y", "dbridge-mcp", "postgresql://user:pass@host:5432/mydb"],
+      "env": { "DBRIDGE_CONFIG": "/absolute/path/to/dbridge.config.json" }
+    }
+  }
+}
+```
+
+For a local SQLite file, replace the connection string with an absolute path to the `.db` file. Restart Claude Desktop, then ask: _"geçen ay en çok satan 5 ürün ne?"_
+
+## Use it in Claude Code
+
+Add it to the current project with the CLI:
+
+```bash
+claude mcp add dbridge --scope project \
+  -e DBRIDGE_CONFIG=/absolute/path/to/dbridge.config.json \
+  -- npx -y dbridge-mcp "postgresql://user:pass@host:5432/mydb"
+```
+
+`--scope project` writes a shareable `.mcp.json` in the project root; use `--scope user` for a global server or omit it for a private per-project one. The `.mcp.json` looks like:
+
+```json
+{
+  "mcpServers": {
+    "dbridge": {
+      "command": "npx",
+      "args": ["-y", "dbridge-mcp", "postgresql://user:pass@host:5432/mydb"],
+      "env": { "DBRIDGE_CONFIG": "/absolute/path/to/dbridge.config.json" }
+    }
+  }
+}
+```
+
+Run `claude` from that directory; approve the project server once, then check it with `/mcp`.
+
+## Use it in OpenCode
+
+Add to `opencode.json` (project root or `~/.config/opencode/opencode.json`):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "dbridge": {
+      "type": "local",
+      "command": ["npx", "-y", "dbridge-mcp", "postgresql://user:pass@host:5432/mydb"],
+      "enabled": true
+    }
+  }
+}
+```
+
+To tune the safety guard, point the server at a config file with the `environment` block:
+
+```json
+"environment": { "DBRIDGE_CONFIG": "/absolute/path/to/dbridge.config.json" }
+```
+
+## Docker
+
+Build the image and run the server over stdio:
+
+```bash
+docker build -t dbridge-mcp .
+docker run --rm -i dbridge-mcp "postgresql://user:pass@host:5432/mydb"
+```
+
+Mount a config file and point `DBRIDGE_CONFIG` at it:
+
+```bash
+docker run --rm -i \
+  -v "$PWD/dbridge.config.json:/config.json:ro" \
+  -e DBRIDGE_CONFIG=/config.json \
+  dbridge-mcp "postgresql://user:pass@host:5432/mydb"
+```
+
 ## Safety
 
 - The connection is opened read-only. On PostgreSQL and MySQL every query also runs inside a `READ ONLY` transaction, so writes are rejected by the database itself even if a query slips past the guard.
@@ -127,49 +239,6 @@ Unlike `hiddenColumns`, a masked column can still be used in `WHERE`/`GROUP BY`,
 - Prefer a dedicated database role with read-only grants on only the tables you want exposed — that is the real security boundary; the guard is defense in depth.
 - Set a conservative `statementTimeoutMs`, `maxRows`, and `maxCost`, and use `allowedTables` to expose only reporting tables.
 
-## Requirements
-
-Node.js 22.5+ (SQLite uses the built-in `node:sqlite`, no native build step).
-
-## Install
-
-The published package ships a `dbridge-mcp` binary, so no clone or build step is needed to use it. Point it at a database with the connection argument:
-
-```bash
-npx -y dbridge-mcp demo.db                                  # SQLite (file path)
-npx -y dbridge-mcp "postgresql://user:pass@host:5432/mydb"  # PostgreSQL
-npx -y dbridge-mcp "mysql://user:pass@host:3306/mydb"       # MySQL / MariaDB
-```
-
-The database engine is chosen from the connection string: a file path is SQLite, `postgres://` / `postgresql://` is PostgreSQL, and `mysql://` is MySQL/MariaDB.
-
-Or install it once, globally:
-
-```bash
-npm install -g dbridge-mcp
-dbridge-mcp "postgresql://user:pass@host:5432/mydb"
-```
-
-MCP clients start the server for you as a subprocess — see the client sections below.
-
-## Docker
-
-Build the image and run the server over stdio:
-
-```bash
-docker build -t dbridge-mcp .
-docker run --rm -i dbridge-mcp "postgresql://user:pass@host:5432/mydb"
-```
-
-Mount a config file and point `DBRIDGE_CONFIG` at it:
-
-```bash
-docker run --rm -i \
-  -v "$PWD/dbridge.config.json:/config.json:ro" \
-  -e DBRIDGE_CONFIG=/config.json \
-  dbridge-mcp "postgresql://user:pass@host:5432/mydb"
-```
-
 ## Local development
 
 To hack on dbridge itself, clone the repo and build from source:
@@ -193,75 +262,6 @@ Then call the tools from the Inspector UI. No LLM or API key needed.
 
 ```bash
 npm test
-```
-
-> **Windows note:** MCP clients cannot launch `npx` directly on Windows because it is a `.cmd` script. Wrap it with `cmd /c` — use `"command": "cmd"` and put `"/c", "npx", "-y", "dbridge-mcp", "<connection>"` in the args. The examples below use the direct form (macOS/Linux); on Windows add the `cmd /c` prefix.
-
-## Use it in Claude Desktop
-
-Claude Desktop only supports a single global config. Add to `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "dbridge": {
-      "command": "npx",
-      "args": ["-y", "dbridge-mcp", "postgresql://user:pass@host:5432/mydb"],
-      "env": { "DBRIDGE_CONFIG": "/absolute/path/to/dbridge.config.json" }
-    }
-  }
-}
-```
-
-For a local SQLite file, replace the connection string with an absolute path to the `.db` file. Restart Claude Desktop, then ask: _"geçen ay en çok satan 5 ürün ne?"_
-
-## Use it in Claude Code
-
-Add it to the current project with the CLI:
-
-```bash
-claude mcp add dbridge --scope project \
-  -e DBRIDGE_CONFIG=/absolute/path/to/dbridge.config.json \
-  -- npx -y dbridge-mcp "postgresql://user:pass@host:5432/mydb"
-```
-
-`--scope project` writes a shareable `.mcp.json` in the project root; use `--scope user` for a global server or omit it for a private per-project one. The `.mcp.json` looks like:
-
-```json
-{
-  "mcpServers": {
-    "dbridge": {
-      "command": "npx",
-      "args": ["-y", "dbridge-mcp", "postgresql://user:pass@host:5432/mydb"],
-      "env": { "DBRIDGE_CONFIG": "/absolute/path/to/dbridge.config.json" }
-    }
-  }
-}
-```
-
-Run `claude` from that directory; approve the project server once, then check it with `/mcp`.
-
-## Use it in OpenCode
-
-Add to `opencode.json` (project root or `~/.config/opencode/opencode.json`):
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "dbridge": {
-      "type": "local",
-      "command": ["npx", "-y", "dbridge-mcp", "postgresql://user:pass@host:5432/mydb"],
-      "enabled": true
-    }
-  }
-}
-```
-
-To tune the safety guard, point the server at a config file with the `environment` block:
-
-```json
-"environment": { "DBRIDGE_CONFIG": "/absolute/path/to/dbridge.config.json" }
 ```
 
 ## Changelog
