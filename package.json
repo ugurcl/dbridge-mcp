@@ -1,6 +1,6 @@
 {
   "name": "dbridge-mcp",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "MCP server that lets AI agents query a SQL database in natural language, safely and read-only.",
   "type": "module",
   "bin": {

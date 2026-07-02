@@ -15,10 +15,10 @@ A raw LLM cannot know what is inside your database, and web search cannot reach 
 | Tool | Purpose |
 | --- | --- |
 | `list_tables` | List every table in the database. |
-| `describe_table` | Return a table's columns and types. |
-| `sample_table` | Preview the first rows of a table. |
+| `describe_table` | Return a table's columns, primary key, foreign keys, and row-count estimate. |
+| `sample_table` | Preview the first rows of a table (`json`/`csv`/`markdown`). |
 | `count_rows` | Return the exact row count of a table. |
-| `run_query` | Run a single read-only `SELECT` / `WITH` and return rows as JSON. |
+| `run_query` | Run a single read-only `SELECT` / `WITH` and return rows as `json`, `csv`, or `markdown`. |
 | `explain_query` | Return a query's plan and estimated cost without running it. |
 | `get_limits` | Report the safety limits in effect (caps, timeouts, hidden/masked columns). |
 
@@ -75,6 +75,8 @@ Or point `DBRIDGE_CONFIG` at a JSON file. Every field is optional:
 | `maxRows` | `--max-rows` / `DBRIDGE_MAX_ROWS` | `1000` | Hard cap on rows returned per query, enforced even over a larger `LIMIT`. |
 | `hiddenColumns` | `--hidden-columns` / `DBRIDGE_HIDDEN_COLUMNS` | `[]` | Columns hidden from the schema, queries, and results. |
 | `maskedColumns` | `--masked-columns` / `DBRIDGE_MASKED_COLUMNS` | `[]` | Columns whose values are redacted in results (see below). |
+| `maxCellChars` | `--max-cell-chars` / `DBRIDGE_MAX_CELL_CHARS` | `0` | Truncate any string cell longer than this; `0` disables. |
+| `maxResultBytes` | `--max-result-bytes` / `DBRIDGE_MAX_RESULT_BYTES` | `0` | Cap the total serialized result size, dropping trailing rows; `0` disables. |
 | `allowedTables` | `--allowed-tables` / `DBRIDGE_ALLOWED_TABLES` | `[]` | If non-empty, only these tables are exposed. |
 | `blockedTables` | `--blocked-tables` / `DBRIDGE_BLOCKED_TABLES` | `[]` | Tables that are always hidden and unqueryable. |
 | `statementTimeoutMs` | `--statement-timeout-ms` / `DBRIDGE_STATEMENT_TIMEOUT_MS` | `10000` | PostgreSQL per-query timeout; `0` disables. |
@@ -99,6 +101,10 @@ List values on the command line or in env vars are comma-separated (`--allowed-t
 | `full` | anything | `***` |
 
 Unlike `hiddenColumns`, a masked column can still be used in `WHERE`/`GROUP BY`, so use `hiddenColumns` for true secrets and `maskedColumns` for values that should be recognizable but not exposed.
+
+### Output formats
+
+`run_query` and `sample_table` take an optional `format` argument: `json` (default, full result object), `csv`, or `markdown`. CSV and Markdown return a compact table prefixed with a short `rows: N · Nms` header — handy for fewer tokens and readable output. Combine with `maxCellChars` and `maxResultBytes` to keep large results in check.
 
 ### Running against a production database
 
