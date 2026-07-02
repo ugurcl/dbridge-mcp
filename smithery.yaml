@@ -1,0 +1,25 @@
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    required:
+      - connection
+    properties:
+      connection:
+        type: string
+        title: Database connection
+        description: >-
+          Database to expose: a SQLite file path, or a postgresql:// /
+          mysql:// connection string.
+      configPath:
+        type: string
+        title: Safety config path
+        description: >-
+          Optional absolute path to a dbridge.config.json with safety settings
+          (row caps, hidden/masked columns, table allow/block lists).
+  commandFunction: |-
+    (config) => ({
+      command: 'npx',
+      args: ['-y', 'dbridge-mcp', config.connection],
+      env: config.configPath ? { DBRIDGE_CONFIG: config.configPath } : {}
+    })

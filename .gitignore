@@ -7,3 +7,4 @@ dist/
 .DS_Store
 opencode.json
 dbridge.config.json
+mcp-publisher.exe
