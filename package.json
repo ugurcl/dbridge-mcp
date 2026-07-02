@@ -8,7 +8,9 @@
   },
   "main": "dist/index.js",
   "files": [
-    "dist"
+    "dist",
+    "!dist/seed.js",
+    "!dist/db.js"
   ],
   "engines": {
     "node": ">=22.5.0"
