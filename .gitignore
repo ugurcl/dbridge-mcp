@@ -5,3 +5,5 @@ dist/
 *.db-wal
 *.log
 .DS_Store
+opencode.json
+dbridge.config.json
