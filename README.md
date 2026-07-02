@@ -23,6 +23,18 @@ Works with **SQLite**, **PostgreSQL**, and **MySQL / MariaDB**.
 
 A raw LLM cannot know what is inside your database, and web search cannot reach private data. dbridge gives the model a guarded door to that data: it can read and answer, but it cannot write, drop, or leak the whole table.
 
+### Why dbridge and not another database MCP?
+
+There are many database MCP servers. dbridge is built around one idea — **you should be able to point an AI at a real database without holding your breath** — and that shows up as a combination the single-engine servers don't offer:
+
+- **One server, three engines.** SQLite, PostgreSQL, and MySQL/MariaDB behind the same seven tools and the same config. Switch databases by changing the connection string, not the tooling.
+- **Read-only twice over.** A SQL guard rejects anything but `SELECT`/`WITH` *and* every query runs inside a database-enforced `READ ONLY` transaction — so even a query that outsmarts the guard cannot write.
+- **Column-level privacy.** Hide columns from the model entirely, or mask values (`a***@site.com`) while keeping them queryable. Most servers expose whatever the connection can see.
+- **Blast-radius controls.** Row caps enforced over user-supplied `LIMIT`s, per-query timeouts, `EXPLAIN`-based cost rejection for expensive queries, per-minute rate limits, and a capped connection pool.
+- **No native build step.** SQLite uses Node's built-in `node:sqlite`, so `npx -y dbridge-mcp` works without a compiler toolchain.
+
+If all you need is "run SQL from my agent", plenty of servers do that. dbridge is for pointing an agent at data you actually care about.
+
 ## Tools
 
 | Tool | Purpose |
