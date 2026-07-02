@@ -15,7 +15,7 @@ export function createServer(driver: Driver, deps: ServerDeps = {}): McpServer {
   const audit = deps.audit ?? (() => undefined);
   const limiter = deps.limiter ?? { take: () => undefined };
   const limits = deps.limits ?? {};
-  const server = new McpServer({ name: "dbridge-mcp", version: "0.6.0" });
+  const server = new McpServer({ name: "dbridge-mcp", version: "0.7.0" });
 
   const run = <T>(tool: string, details: Record<string, unknown>, action: () => Promise<T>) =>
     track(tool, details, audit, action);

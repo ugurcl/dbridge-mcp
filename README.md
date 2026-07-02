@@ -4,7 +4,7 @@ An [MCP](https://modelcontextprotocol.io) server that lets an AI agent query a S
 
 The agent discovers the schema on its own (`list_tables`, `describe_table`), then writes and runs a `SELECT` for whatever the user asks. No hand-written endpoint per question.
 
-Works with **SQLite** and **PostgreSQL**.
+Works with **SQLite**, **PostgreSQL**, and **MySQL / MariaDB**.
 
 ## Why
 
@@ -79,13 +79,13 @@ Or point `DBRIDGE_CONFIG` at a JSON file. Every field is optional:
 | `maxResultBytes` | `--max-result-bytes` / `DBRIDGE_MAX_RESULT_BYTES` | `0` | Cap the total serialized result size, dropping trailing rows; `0` disables. |
 | `allowedTables` | `--allowed-tables` / `DBRIDGE_ALLOWED_TABLES` | `[]` | If non-empty, only these tables are exposed. |
 | `blockedTables` | `--blocked-tables` / `DBRIDGE_BLOCKED_TABLES` | `[]` | Tables that are always hidden and unqueryable. |
-| `statementTimeoutMs` | `--statement-timeout-ms` / `DBRIDGE_STATEMENT_TIMEOUT_MS` | `10000` | PostgreSQL per-query timeout; `0` disables. |
-| `maxCost` | `--max-cost` / `DBRIDGE_MAX_COST` | `0` | Reject queries whose PostgreSQL `EXPLAIN` cost exceeds this; `0` disables. |
+| `statementTimeoutMs` | `--statement-timeout-ms` / `DBRIDGE_STATEMENT_TIMEOUT_MS` | `10000` | Per-query timeout (PostgreSQL `statement_timeout`, MySQL `max_execution_time`); `0` disables. |
+| `maxCost` | `--max-cost` / `DBRIDGE_MAX_COST` | `0` | Reject queries whose `EXPLAIN` cost estimate exceeds this (PostgreSQL/MySQL); `0` disables. |
 | `rateLimitPerMin` | `--rate-limit-per-min` / `DBRIDGE_RATE_LIMIT_PER_MIN` | `0` | Max query-executing tool calls per minute; `0` disables. |
 | `maxPoolSize` | `--max-pool-size` / `DBRIDGE_MAX_POOL_SIZE` | `5` | Maximum PostgreSQL connections. |
 | `connectionTimeoutMs` | `--connection-timeout-ms` / `DBRIDGE_CONNECTION_TIMEOUT_MS` | `10000` | How long to wait for a connection. |
 | `requireSsl` | `--require-ssl` / `DBRIDGE_REQUIRE_SSL` | `false` | Require a verified TLS connection (PostgreSQL). |
-| `schemas` | `--schemas` / `DBRIDGE_SCHEMAS` | `["public"]` | PostgreSQL schemas to expose; multiple schemas yield `schema.table` names. |
+| `schemas` | `--schemas` / `DBRIDGE_SCHEMAS` | `["public"]` | PostgreSQL-only: schemas to expose; multiple schemas yield `schema.table` names. |
 | `auditLog` | `--audit-log` / `DBRIDGE_AUDIT_LOG` | `false` | Log every tool call (query, rows, duration, errors) as JSON to stderr. |
 
 List values on the command line or in env vars are comma-separated (`--allowed-tables urunler,satislar`).
@@ -123,7 +123,10 @@ The published package ships a `dbridge-mcp` binary, so no clone or build step is
 ```bash
 npx -y dbridge-mcp demo.db                                  # SQLite (file path)
 npx -y dbridge-mcp "postgresql://user:pass@host:5432/mydb"  # PostgreSQL
+npx -y dbridge-mcp "mysql://user:pass@host:3306/mydb"       # MySQL / MariaDB
 ```
+
+The database engine is chosen from the connection string: a file path is SQLite, `postgres://` / `postgresql://` is PostgreSQL, and `mysql://` is MySQL/MariaDB.
 
 Or install it once, globally:
 
