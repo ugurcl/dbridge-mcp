@@ -10,12 +10,27 @@
   "files": [
     "dist"
   ],
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ugurcl/dbridge-mcp.git"
+  },
+  "homepage": "https://github.com/ugurcl/dbridge-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/ugurcl/dbridge-mcp/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "test": "tsc && node --test \"tests/**/*.test.js\"",
     "start": "node dist/index.js",
     "seed": "tsc && node dist/seed.js",
-    "inspect": "tsc && npx @modelcontextprotocol/inspector node dist/index.js demo.db"
+    "inspect": "tsc && npx @modelcontextprotocol/inspector node dist/index.js demo.db",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "mcp",
