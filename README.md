@@ -126,21 +126,7 @@ Run `claude` from that directory; approve the project server once, then check it
 
 ## Use it in Cursor
 
-Add to `.cursor/mcp.json` in the project root (or `~/.cursor/mcp.json` for all projects):
-
-```json
-{
-  "mcpServers": {
-    "dbridge": {
-      "command": "npx",
-      "args": ["-y", "dbridge-mcp", "postgresql://user:pass@host:5432/mydb"],
-      "env": { "DBRIDGE_CONFIG": "/absolute/path/to/dbridge.config.json" }
-    }
-  }
-}
-```
-
-Enable the server under **Settings → MCP**, then ask the Agent a question about your data.
+Add the same `mcpServers` block to `.cursor/mcp.json` in the project root (or `~/.cursor/mcp.json` for all projects), enable the server under **Settings → MCP**, then ask the Agent a question about your data.
 
 ## Use it in Windsurf
 

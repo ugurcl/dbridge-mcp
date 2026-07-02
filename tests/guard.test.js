@@ -72,7 +72,7 @@ test("rejects queries that touch a hidden column", () => {
 });
 
 test("rejects queries that touch a blocked table", () => {
-  const blocked = { ...DEFAULT_SAFETY, blockedTables: ["personel"] };
+  const blocked = { ...DEFAULT_SAFETY, blockedTables: ["employees"] };
   assert.throws(() => sanitizeQuery("SELECT * FROM personel", blocked));
 });
 
@@ -98,7 +98,7 @@ test("isTableAllowed honors allow and block lists", () => {
 
   const allowed = { ...DEFAULT_SAFETY, allowedTables: ["products", "sales"] };
   assert.equal(isTableAllowed("products", allowed), true);
-  assert.equal(isTableAllowed("personel", allowed), false);
+  assert.equal(isTableAllowed("employees", allowed), false);
 });
 
 test("isTableAllowed matches schema-qualified names", () => {
