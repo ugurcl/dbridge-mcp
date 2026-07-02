@@ -1,6 +1,6 @@
 {
   "name": "dbridge-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "MCP server that lets AI agents query a SQL database in natural language, safely and read-only.",
   "type": "module",
   "bin": {
@@ -30,10 +30,13 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
+    "pg": "^8.22.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.3",
     "@types/node": "^22.10.0",
+    "@types/pg": "^8.20.0",
     "typescript": "^5.7.0"
   }
 }

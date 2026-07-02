@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Driver } from "./drivers/types.js";
 
 export function createServer(driver: Driver): McpServer {
-  const server = new McpServer({ name: "dbridge-mcp", version: "0.2.0" });
+  const server = new McpServer({ name: "dbridge-mcp", version: "0.3.0" });
 
   server.registerTool(
     "list_tables",

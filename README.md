@@ -4,6 +4,8 @@ An [MCP](https://modelcontextprotocol.io) server that lets an AI agent query a S
 
 The agent discovers the schema on its own (`list_tables`, `describe_table`), then writes and runs a `SELECT` for whatever the user asks. No hand-written endpoint per question.
 
+Works with **SQLite** and **PostgreSQL**.
+
 ## Why
 
 A raw LLM cannot know what is inside your database, and web search cannot reach private data. dbridge gives the model a guarded door to that data: it can read and answer, but it cannot write, drop, or leak the whole table.
@@ -43,7 +45,7 @@ Point `DBRIDGE_CONFIG` at a JSON file to tune the guard:
 
 ## Requirements
 
-Node.js 22.5+ (uses the built-in `node:sqlite`). No native build step.
+Node.js 22.5+ (SQLite uses the built-in `node:sqlite`, no native build step).
 
 ## Setup
 
@@ -51,6 +53,15 @@ Node.js 22.5+ (uses the built-in `node:sqlite`). No native build step.
 npm install
 npm run build
 npm run seed        # creates demo.db (a small store: urunler, musteriler, satislar)
+```
+
+## Databases
+
+The database is chosen from the connection argument:
+
+```bash
+node dist/index.js demo.db                                  # SQLite (file path)
+node dist/index.js "postgresql://user:pass@host:5432/mydb"  # PostgreSQL
 ```
 
 ## Try it with the MCP Inspector
