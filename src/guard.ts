@@ -1,4 +1,4 @@
-import type { Column } from "./drivers/types.js";
+import type { Column, ForeignKey } from "./drivers/types.js";
 
 export type MaskStrategy = "partial" | "email" | "full";
 
@@ -14,6 +14,8 @@ export interface SafetyConfig {
   allowedTables: string[];
   blockedTables: string[];
   maskedColumns: MaskSpec[];
+  maxCellChars: number;
+  maxResultBytes: number;
 }
 
 export const DEFAULT_SAFETY: SafetyConfig = {
@@ -22,6 +24,8 @@ export const DEFAULT_SAFETY: SafetyConfig = {
   allowedTables: [],
   blockedTables: [],
   maskedColumns: [],
+  maxCellChars: 0,
+  maxResultBytes: 0,
 };
 
 export interface SanitizedQuery {
@@ -129,6 +133,56 @@ export function isTableAllowed(name: string, config: SafetyConfig): boolean {
 
 export function filterTables(names: string[], config: SafetyConfig): string[] {
   return names.filter((name) => isTableAllowed(name, config));
+}
+
+export function visibleForeignKeys(keys: ForeignKey[], config: SafetyConfig): ForeignKey[] {
+  const hidden = toLowerSet(config.hiddenColumns);
+  return keys.filter(
+    (key) => !hidden.has(key.column.toLowerCase()) && isTableAllowed(key.referencesTable, config),
+  );
+}
+
+export function visiblePrimaryKey(columns: string[], config: SafetyConfig): string[] {
+  const hidden = toLowerSet(config.hiddenColumns);
+  return columns.filter((column) => !hidden.has(column.toLowerCase()));
+}
+
+export function truncateCells(
+  rows: Record<string, unknown>[],
+  maxChars: number,
+): Record<string, unknown>[] {
+  if (maxChars <= 0) {
+    return rows;
+  }
+  return rows.map((row) => {
+    const out: Record<string, unknown> = { ...row };
+    for (const key of Object.keys(out)) {
+      const value = out[key];
+      if (typeof value === "string" && value.length > maxChars) {
+        out[key] = `${value.slice(0, maxChars)}…`;
+      }
+    }
+    return out;
+  });
+}
+
+export function capBytes(
+  rows: Record<string, unknown>[],
+  maxBytes: number,
+): { rows: Record<string, unknown>[]; truncated: boolean } {
+  if (maxBytes <= 0) {
+    return { rows, truncated: false };
+  }
+  const out: Record<string, unknown>[] = [];
+  let total = 2;
+  for (const row of rows) {
+    total += JSON.stringify(row).length + 1;
+    if (out.length > 0 && total > maxBytes) {
+      return { rows: out, truncated: true };
+    }
+    out.push(row);
+  }
+  return { rows: out, truncated: false };
 }
 
 export function maskRows(

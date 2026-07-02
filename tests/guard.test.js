@@ -8,6 +8,8 @@ import {
   isTableAllowed,
   filterTables,
   capRows,
+  truncateCells,
+  capBytes,
   DEFAULT_SAFETY,
 } from "../dist/guard.js";
 
@@ -133,4 +135,18 @@ test("capRows slices to the cap and flags truncation", () => {
   const rows = [{ n: 1 }, { n: 2 }, { n: 3 }];
   assert.deepEqual(capRows(rows, 2), { rows: [{ n: 1 }, { n: 2 }], truncated: true });
   assert.deepEqual(capRows(rows, 5), { rows, truncated: false });
+});
+
+test("truncateCells shortens long string cells", () => {
+  const rows = [{ note: "abcdefghij", n: 5 }];
+  assert.deepEqual(truncateCells(rows, 4), [{ note: "abcd…", n: 5 }]);
+  assert.deepEqual(truncateCells(rows, 0), rows);
+});
+
+test("capBytes stops once the byte budget is exceeded", () => {
+  const rows = Array.from({ length: 100 }, (_, i) => ({ i, pad: "x".repeat(50) }));
+  const result = capBytes(rows, 200);
+  assert.ok(result.truncated);
+  assert.ok(result.rows.length >= 1 && result.rows.length < 100);
+  assert.deepEqual(capBytes(rows, 0), { rows, truncated: false });
 });

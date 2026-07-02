@@ -1,8 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { Driver } from "./drivers/types.js";
+import type { Driver, QueryResult } from "./drivers/types.js";
 import type { AuditFn } from "./audit.js";
 import type { RateLimiter } from "./rate-limit.js";
+import { toCsv, toMarkdown, type OutputFormat } from "./format.js";
 
 export interface ServerDeps {
   audit?: AuditFn;
@@ -51,16 +52,17 @@ export function createServer(driver: Driver, deps: ServerDeps = {}): McpServer {
       inputSchema: {
         table: z.string().describe("Exact table name"),
         limit: z.number().int().positive().max(50).optional().describe("Rows to preview, default 10"),
+        format: FORMAT_SCHEMA,
       },
     },
-    async ({ table, limit }) =>
-      textResult(
-        await run("sample_table", { table, limit }, async () => {
-          limiter.take();
-          await driver.describeTable(table);
-          return driver.runQuery(`SELECT * FROM ${quoteQualified(table)} LIMIT ${limit ?? 10}`);
-        }),
-      ),
+    async ({ table, limit, format }) => {
+      const result = await run("sample_table", { table, limit, format }, async () => {
+        limiter.take();
+        await driver.describeTable(table);
+        return driver.runQuery(`SELECT * FROM ${quoteQualified(table)} LIMIT ${limit ?? 10}`);
+      });
+      return formatResult(result, format);
+    },
   );
 
   server.registerTool(
@@ -91,15 +93,16 @@ export function createServer(driver: Driver, deps: ServerDeps = {}): McpServer {
           .describe(
             "A single read-only SELECT or WITH statement, written in the connected database's SQL dialect",
           ),
+        format: FORMAT_SCHEMA,
       },
     },
-    async ({ sql }) =>
-      textResult(
-        await run("run_query", { sql }, () => {
-          limiter.take();
-          return driver.runQuery(sql);
-        }),
-      ),
+    async ({ sql, format }) => {
+      const result = await run("run_query", { sql, format }, () => {
+        limiter.take();
+        return driver.runQuery(sql);
+      });
+      return formatResult(result, format);
+    },
   );
 
   server.registerTool(
@@ -167,6 +170,20 @@ async function track<T>(
     audit({ tool, ...details, ok: false, ms: Date.now() - start, error: message });
     throw new Error(message);
   }
+}
+
+const FORMAT_SCHEMA = z
+  .enum(["json", "csv", "markdown"])
+  .optional()
+  .describe("Output format for the rows: json (default), csv, or markdown");
+
+function formatResult(result: QueryResult, format: OutputFormat | undefined) {
+  if (!format || format === "json") {
+    return textResult(result);
+  }
+  const table = format === "csv" ? toCsv(result.rows) : toMarkdown(result.rows);
+  const header = `rows: ${result.rowCount}${result.truncated ? " (truncated)" : ""} · ${result.elapsedMs}ms`;
+  return { content: [{ type: "text" as const, text: `${header}\n\n${table}` }] };
 }
 
 function textResult(payload: unknown) {

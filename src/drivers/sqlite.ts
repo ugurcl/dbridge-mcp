@@ -1,13 +1,17 @@
 import { DatabaseSync } from "node:sqlite";
-import type { Column, Driver, QueryResult } from "./types.js";
+import type { Driver, ForeignKey, QueryResult, TableSchema } from "./types.js";
 import {
+  capBytes,
   capRows,
   filterTables,
   isTableAllowed,
   maskRows,
   redactRows,
   sanitizeQuery,
+  truncateCells,
   visibleColumns,
+  visibleForeignKeys,
+  visiblePrimaryKey,
   type SafetyConfig,
 } from "../guard.js";
 
@@ -15,6 +19,13 @@ interface TableInfoRow {
   name: string;
   type: string;
   notnull: number;
+  pk: number;
+}
+
+interface ForeignKeyRow {
+  table: string;
+  from: string;
+  to: string;
 }
 
 export class SqliteDriver implements Driver {
@@ -39,7 +50,7 @@ export class SqliteDriver implements Driver {
     );
   }
 
-  async describeTable(table: string): Promise<Column[]> {
+  async describeTable(table: string): Promise<TableSchema> {
     if (!isTableAllowed(table, this.safety)) {
       throw new Error(`Unknown table: ${table}`);
     }
@@ -59,7 +70,24 @@ export class SqliteDriver implements Driver {
       type: row.type || "unknown",
       nullable: row.notnull === 0,
     }));
-    return visibleColumns(columns, this.safety);
+    const primaryKey = info
+      .filter((row) => row.pk > 0)
+      .sort((a, b) => a.pk - b.pk)
+      .map((row) => row.name);
+    const fkRows = this.db
+      .prepare(`PRAGMA foreign_key_list(${quoteIdent(table)})`)
+      .all() as unknown as ForeignKeyRow[];
+    const foreignKeys: ForeignKey[] = fkRows.map((row) => ({
+      column: row.from,
+      referencesTable: row.table,
+      referencesColumn: row.to,
+    }));
+    return {
+      columns: visibleColumns(columns, this.safety),
+      primaryKey: visiblePrimaryKey(primaryKey, this.safety),
+      foreignKeys: visibleForeignKeys(foreignKeys, this.safety),
+      rowCount: null,
+    };
   }
 
   async runQuery(sql: string): Promise<QueryResult> {
@@ -67,12 +95,16 @@ export class SqliteDriver implements Driver {
     const start = Date.now();
     const raw = this.db.prepare(statement).all() as Record<string, unknown>[];
     const elapsedMs = Date.now() - start;
-    const { rows, truncated } = capRows(raw, rowCap);
-    const visible = maskRows(redactRows(rows, this.safety), this.safety.maskedColumns);
+    const capped = capRows(raw, rowCap);
+    const shaped = truncateCells(
+      maskRows(redactRows(capped.rows, this.safety), this.safety.maskedColumns),
+      this.safety.maxCellChars,
+    );
+    const limited = capBytes(shaped, this.safety.maxResultBytes);
     return {
-      rowCount: visible.length,
-      truncated,
-      rows: visible,
+      rowCount: limited.rows.length,
+      truncated: capped.truncated || limited.truncated,
+      rows: limited.rows,
       elapsedMs,
     };
   }

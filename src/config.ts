@@ -46,6 +46,13 @@ const FIELDS: FieldDef[] = [
   { key: "allowedTables", env: "DBRIDGE_ALLOWED_TABLES", flag: "allowed-tables", type: "list" },
   { key: "blockedTables", env: "DBRIDGE_BLOCKED_TABLES", flag: "blocked-tables", type: "list" },
   { key: "maskedColumns", env: "DBRIDGE_MASKED_COLUMNS", flag: "masked-columns", type: "list" },
+  { key: "maxCellChars", env: "DBRIDGE_MAX_CELL_CHARS", flag: "max-cell-chars", type: "nonnegint" },
+  {
+    key: "maxResultBytes",
+    env: "DBRIDGE_MAX_RESULT_BYTES",
+    flag: "max-result-bytes",
+    type: "nonnegint",
+  },
   {
     key: "statementTimeoutMs",
     env: "DBRIDGE_STATEMENT_TIMEOUT_MS",
@@ -181,6 +188,12 @@ function parseSafety(raw: Raw): SafetyConfig {
     allowedTables: stringArray(raw.allowedTables, "allowedTables"),
     blockedTables: stringArray(raw.blockedTables, "blockedTables"),
     maskedColumns: maskArray(raw.maskedColumns),
+    maxCellChars: nonNegativeInt(raw.maxCellChars, "maxCellChars", DEFAULT_SAFETY.maxCellChars),
+    maxResultBytes: nonNegativeInt(
+      raw.maxResultBytes,
+      "maxResultBytes",
+      DEFAULT_SAFETY.maxResultBytes,
+    ),
   };
 }
 

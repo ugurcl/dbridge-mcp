@@ -18,9 +18,13 @@ function makeClient(instance) {
 before(async () => {
   pg = new PGlite();
   await pg.exec(
-    "CREATE TABLE personel (ad TEXT, maas INTEGER); INSERT INTO personel VALUES ('a', 100), ('b', 200);",
+    "CREATE TABLE personel (id INTEGER PRIMARY KEY, ad TEXT, maas INTEGER); INSERT INTO personel VALUES (1, 'a', 100), (2, 'b', 200);",
+  );
+  await pg.exec(
+    "CREATE TABLE gorev (id INTEGER PRIMARY KEY, personel_id INTEGER REFERENCES personel(id), ad TEXT);",
   );
   await pg.exec("CREATE TABLE secrets (token TEXT); INSERT INTO secrets VALUES ('x');");
+  await pg.exec("ANALYZE personel;");
   driver = new PostgresDriver(
     makeClient(pg),
     {
@@ -29,6 +33,8 @@ before(async () => {
       allowedTables: [],
       blockedTables: ["secrets"],
       maskedColumns: [],
+      maxCellChars: 0,
+      maxResultBytes: 0,
     },
     options,
     () => pg.close(),
@@ -40,15 +46,26 @@ after(async () => {
 });
 
 test("lists tables and hides blocked ones", async () => {
-  assert.deepEqual(await driver.listTables(), ["personel"]);
+  assert.deepEqual(await driver.listTables(), ["gorev", "personel"]);
 });
 
 test("hides restricted column in describe_table", async () => {
-  const columns = await driver.describeTable("personel");
+  const schema = await driver.describeTable("personel");
   assert.deepEqual(
-    columns.map((c) => c.name),
-    ["ad"],
+    schema.columns.map((c) => c.name),
+    ["id", "ad"],
   );
+});
+
+test("reports primary key, foreign keys, and row count", async () => {
+  const personel = await driver.describeTable("personel");
+  assert.deepEqual(personel.primaryKey, ["id"]);
+  assert.ok(personel.rowCount === null || typeof personel.rowCount === "number");
+
+  const gorev = await driver.describeTable("gorev");
+  assert.deepEqual(gorev.foreignKeys, [
+    { column: "personel_id", referencesTable: "personel", referencesColumn: "id" },
+  ]);
 });
 
 test("throws on an unknown table", async () => {

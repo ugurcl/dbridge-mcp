@@ -1,12 +1,16 @@
-import type { Column, Driver, QueryResult } from "./types.js";
+import type { Driver, ForeignKey, QueryResult, TableSchema } from "./types.js";
 import {
+  capBytes,
   capRows,
   filterTables,
   isTableAllowed,
   maskRows,
   redactRows,
   sanitizeQuery,
+  truncateCells,
   visibleColumns,
+  visibleForeignKeys,
+  visiblePrimaryKey,
   type SafetyConfig,
 } from "../guard.js";
 
@@ -50,7 +54,7 @@ export class PostgresDriver implements Driver {
     return filterTables(names, this.safety);
   }
 
-  async describeTable(table: string): Promise<Column[]> {
+  async describeTable(table: string): Promise<TableSchema> {
     if (!isTableAllowed(table, this.safety)) {
       throw new Error(`Unknown table: ${table}`);
     }
@@ -63,7 +67,15 @@ export class PostgresDriver implements Driver {
       type: row.data_type,
       nullable: row.is_nullable === "YES",
     }));
-    return visibleColumns(columns, this.safety);
+    const dot = table.indexOf(".");
+    const name = dot === -1 ? table : table.slice(dot + 1);
+    const schema = dot === -1 ? await this.resolveSchema(name) : table.slice(0, dot);
+    return {
+      columns: visibleColumns(columns, this.safety),
+      primaryKey: visiblePrimaryKey(await this.fetchPrimaryKey(schema, name), this.safety),
+      foreignKeys: visibleForeignKeys(await this.fetchForeignKeys(schema, name), this.safety),
+      rowCount: await this.estimateRowCount(schema, name),
+    };
   }
 
   async runQuery(sql: string): Promise<QueryResult> {
@@ -75,12 +87,16 @@ export class PostgresDriver implements Driver {
       return result.rows;
     });
     const elapsedMs = Date.now() - start;
-    const { rows, truncated } = capRows(raw, rowCap);
-    const visible = maskRows(redactRows(rows, this.safety), this.safety.maskedColumns);
+    const capped = capRows(raw, rowCap);
+    const shaped = truncateCells(
+      maskRows(redactRows(capped.rows, this.safety), this.safety.maskedColumns),
+      this.safety.maxCellChars,
+    );
+    const limited = capBytes(shaped, this.safety.maxResultBytes);
     return {
-      rowCount: visible.length,
-      truncated,
-      rows: visible,
+      rowCount: limited.rows.length,
+      truncated: capped.truncated || limited.truncated,
+      rows: limited.rows,
       elapsedMs,
     };
   }
@@ -142,6 +158,57 @@ export class PostgresDriver implements Driver {
         `Query rejected: estimated cost ${Math.round(cost)} exceeds the limit of ${this.options.maxCost}. Narrow the query (add filters or a smaller range).`,
       );
     }
+  }
+
+  private async resolveSchema(name: string): Promise<string> {
+    const { rows } = await this.client.query(
+      "SELECT table_schema FROM information_schema.tables WHERE table_schema = ANY($1) AND table_name = $2 LIMIT 1",
+      [this.options.schemas, name],
+    );
+    return rows.length > 0 ? String(rows[0].table_schema) : this.options.schemas[0];
+  }
+
+  private async fetchPrimaryKey(schema: string, name: string): Promise<string[]> {
+    const { rows } = await this.client.query(
+      `SELECT kcu.column_name
+       FROM information_schema.table_constraints tc
+       JOIN information_schema.key_column_usage kcu
+         ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+       WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = $1 AND tc.table_name = $2
+       ORDER BY kcu.ordinal_position`,
+      [schema, name],
+    );
+    return rows.map((row) => String(row.column_name));
+  }
+
+  private async fetchForeignKeys(schema: string, name: string): Promise<ForeignKey[]> {
+    const { rows } = await this.client.query(
+      `SELECT kcu.column_name, ccu.table_name AS ref_table, ccu.column_name AS ref_column
+       FROM information_schema.table_constraints tc
+       JOIN information_schema.key_column_usage kcu
+         ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+       JOIN information_schema.constraint_column_usage ccu
+         ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+       WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = $1 AND tc.table_name = $2`,
+      [schema, name],
+    );
+    return rows.map((row) => ({
+      column: String(row.column_name),
+      referencesTable: String(row.ref_table),
+      referencesColumn: String(row.ref_column),
+    }));
+  }
+
+  private async estimateRowCount(schema: string, name: string): Promise<number | null> {
+    const { rows } = await this.client.query(
+      "SELECT reltuples::bigint AS estimate FROM pg_class WHERE oid = to_regclass($1)",
+      [`${quoteQualified(`${schema}.${name}`)}`],
+    );
+    if (rows.length === 0) {
+      return null;
+    }
+    const estimate = Number((rows[0] as { estimate: string | number }).estimate);
+    return Number.isFinite(estimate) && estimate >= 0 ? estimate : null;
   }
 
   private async fetchColumns(table: string): Promise<ColumnRow[]> {

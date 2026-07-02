@@ -14,7 +14,10 @@ before(() => {
   const path = join(dir, "t.db");
   const seed = new DatabaseSync(path);
   seed.exec(
-    "CREATE TABLE personel (ad TEXT, maas INTEGER); INSERT INTO personel VALUES ('a', 100), ('b', 200);",
+    "CREATE TABLE personel (id INTEGER PRIMARY KEY, ad TEXT, maas INTEGER); INSERT INTO personel VALUES (1, 'a', 100), (2, 'b', 200);",
+  );
+  seed.exec(
+    "CREATE TABLE gorev (id INTEGER PRIMARY KEY, personel_id INTEGER REFERENCES personel(id), ad TEXT);",
   );
   seed.exec("CREATE TABLE secrets (token TEXT); INSERT INTO secrets VALUES ('x');");
   seed.close();
@@ -24,6 +27,8 @@ before(() => {
     allowedTables: [],
     blockedTables: ["secrets"],
     maskedColumns: [],
+    maxCellChars: 0,
+    maxResultBytes: 0,
   });
 });
 
@@ -33,15 +38,25 @@ after(async () => {
 });
 
 test("lists tables and hides blocked ones", async () => {
-  assert.deepEqual(await driver.listTables(), ["personel"]);
+  assert.deepEqual(await driver.listTables(), ["gorev", "personel"]);
 });
 
 test("hides restricted column in describe_table", async () => {
-  const columns = await driver.describeTable("personel");
+  const schema = await driver.describeTable("personel");
   assert.deepEqual(
-    columns.map((c) => c.name),
-    ["ad"],
+    schema.columns.map((c) => c.name),
+    ["id", "ad"],
   );
+});
+
+test("reports primary key and foreign keys", async () => {
+  const personel = await driver.describeTable("personel");
+  assert.deepEqual(personel.primaryKey, ["id"]);
+
+  const gorev = await driver.describeTable("gorev");
+  assert.deepEqual(gorev.foreignKeys, [
+    { column: "personel_id", referencesTable: "personel", referencesColumn: "id" },
+  ]);
 });
 
 test("throws on an unknown table", async () => {

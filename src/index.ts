@@ -27,6 +27,8 @@ function summarizeLimits(config: ReturnType<typeof loadConfig>): Record<string, 
   return {
     kind: config.kind,
     maxRows: config.safety.maxRows,
+    maxCellChars: config.safety.maxCellChars,
+    maxResultBytes: config.safety.maxResultBytes,
     statementTimeoutMs: config.driver.statementTimeoutMs,
     maxCost: config.driver.maxCost,
     rateLimitPerMin: config.driver.rateLimitPerMin,
