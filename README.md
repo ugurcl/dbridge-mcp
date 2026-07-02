@@ -124,6 +124,28 @@ claude mcp add dbridge --scope project \
 
 Run `claude` from that directory; approve the project server once, then check it with `/mcp`.
 
+## Use it in Cursor
+
+Add to `.cursor/mcp.json` in the project root (or `~/.cursor/mcp.json` for all projects):
+
+```json
+{
+  "mcpServers": {
+    "dbridge": {
+      "command": "npx",
+      "args": ["-y", "dbridge-mcp", "postgresql://user:pass@host:5432/mydb"],
+      "env": { "DBRIDGE_CONFIG": "/absolute/path/to/dbridge.config.json" }
+    }
+  }
+}
+```
+
+Enable the server under **Settings → MCP**, then ask the Agent a question about your data.
+
+## Use it in Windsurf
+
+Add the same `mcpServers` block to `~/.codeium/windsurf/mcp_config.json`, then refresh the server list under **Settings → Cascade → MCP**.
+
 ## Use it in OpenCode
 
 Add to `opencode.json` (project root or `~/.config/opencode/opencode.json`):
