@@ -224,7 +224,13 @@ function parseDriver(raw: Raw): DriverOptions {
 }
 
 function detectKind(connection: string): DriverKind {
-  return /^postgres(ql)?:\/\//i.test(connection) ? "postgres" : "sqlite";
+  if (/^postgres(ql)?:\/\//i.test(connection)) {
+    return "postgres";
+  }
+  if (/^mysql:\/\//i.test(connection)) {
+    return "mysql";
+  }
+  return "sqlite";
 }
 
 function positiveInt(value: unknown, name: string, fallback: number): number {
