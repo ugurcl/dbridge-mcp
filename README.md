@@ -1,6 +1,12 @@
-# dbridge-mcp
+<p align="center">
+  <img src="assets/logo.png" alt="dbridge-mcp" width="260">
+</p>
 
-An [MCP](https://modelcontextprotocol.io) server that lets an AI agent query a SQL database in plain language — safely and read-only.
+<h1 align="center">dbridge-mcp</h1>
+
+<p align="center">
+An <a href="https://modelcontextprotocol.io">MCP</a> server that lets an AI agent query a SQL database in plain language — safely and read-only.
+</p>
 
 The agent discovers the schema on its own (`list_tables`, `describe_table`), then writes and runs a `SELECT` for whatever the user asks. No hand-written endpoint per question.
 
