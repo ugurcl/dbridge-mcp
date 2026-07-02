@@ -1,0 +1,38 @@
+{
+  "name": "dbridge-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that lets AI agents query a SQL database in natural language, safely and read-only.",
+  "type": "module",
+  "bin": {
+    "dbridge-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "seed": "tsc && node dist/seed.js",
+    "inspect": "tsc && npx @modelcontextprotocol/inspector node dist/index.js demo.db"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "sqlite",
+    "database",
+    "sql",
+    "ai",
+    "llm"
+  ],
+  "author": "ugurcl",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}
