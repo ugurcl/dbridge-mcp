@@ -73,7 +73,7 @@ test("rejects queries that touch a hidden column", () => {
 
 test("rejects queries that touch a blocked table", () => {
   const blocked = { ...DEFAULT_SAFETY, blockedTables: ["employees"] };
-  assert.throws(() => sanitizeQuery("SELECT * FROM personel", blocked));
+  assert.throws(() => sanitizeQuery("SELECT * FROM employees", blocked));
 });
 
 test("hides restricted columns from a column list", () => {
