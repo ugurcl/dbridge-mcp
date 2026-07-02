@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.1]
+
+### Added
+
+- MCP Registry metadata (`server.json`, `mcpName`) for the official registry
+  listing.
+- README: demo gif, comparison section, Cursor and Windsurf setup.
+
+### Changed
+
+- Demo database and documentation examples are now in English
+  (`products`, `customers`, `sales`).
+
 ## [0.7.0]
 
 ### Added

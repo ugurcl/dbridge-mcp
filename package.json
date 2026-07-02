@@ -1,6 +1,7 @@
 {
   "name": "dbridge-mcp",
-  "version": "0.7.0",
+  "version": "0.7.1",
+  "mcpName": "io.github.ugurcl/dbridge-mcp",
   "description": "MCP server that lets AI agents query a SQL database in natural language, safely and read-only.",
   "type": "module",
   "bin": {

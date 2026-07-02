@@ -1,0 +1,37 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.ugurcl/dbridge-mcp",
+  "description": "Query SQLite, PostgreSQL, and MySQL in natural language - read-only, with column masking and query limits.",
+  "repository": {
+    "url": "https://github.com/ugurcl/dbridge-mcp",
+    "source": "github"
+  },
+  "version": "0.7.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "dbridge-mcp",
+      "version": "0.7.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "valueHint": "connection",
+          "description": "Database to expose: a SQLite file path, or a postgresql:// / mysql:// connection string",
+          "isRequired": true
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "DBRIDGE_CONFIG",
+          "description": "Absolute path to a dbridge.config.json with safety settings (row caps, hidden/masked columns, table allow/block lists)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}
