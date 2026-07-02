@@ -1,6 +1,6 @@
 {
   "name": "dbridge-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server that lets AI agents query a SQL database in natural language, safely and read-only.",
   "type": "module",
   "bin": {
@@ -12,6 +12,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "test": "tsc && node --test \"tests/**/*.test.js\"",
     "start": "node dist/index.js",
     "seed": "tsc && node dist/seed.js",
     "inspect": "tsc && npx @modelcontextprotocol/inspector node dist/index.js demo.db"

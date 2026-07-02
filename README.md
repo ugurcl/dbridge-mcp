@@ -14,13 +14,32 @@ A raw LLM cannot know what is inside your database, and web search cannot reach 
 | --- | --- |
 | `list_tables` | List every table in the database. |
 | `describe_table` | Return a table's columns and types. |
+| `sample_table` | Preview the first rows of a table. |
 | `run_query` | Run a single read-only `SELECT` / `WITH` and return rows as JSON. |
+
+## Resources
+
+| Resource | Purpose |
+| --- | --- |
+| `dbridge://schema` | The full schema (every table and its columns) as one JSON document. |
 
 ## Safety
 
 - The connection is opened read-only.
 - Only `SELECT` and `WITH` statements pass; writes and DDL are rejected.
-- A single statement per call; results are capped at 1000 rows.
+- A single statement per call; results are capped (default 1000 rows).
+- Restricted columns can be hidden entirely: the model cannot see them in the schema, query them, or receive them in results.
+
+### Safety config
+
+Point `DBRIDGE_CONFIG` at a JSON file to tune the guard:
+
+```json
+{
+  "maxRows": 500,
+  "hiddenColumns": ["maas", "tc_kimlik", "parola"]
+}
+```
 
 ## Requirements
 
@@ -40,7 +59,13 @@ npm run seed        # creates demo.db (a small store: urunler, musteriler, satis
 npm run inspect
 ```
 
-Then call `list_tables`, `describe_table`, and `run_query` from the Inspector UI. No LLM or API key needed.
+Then call the tools from the Inspector UI. No LLM or API key needed.
+
+## Tests
+
+```bash
+npm test
+```
 
 ## Use it in Claude Desktop
 
