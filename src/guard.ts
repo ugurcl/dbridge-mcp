@@ -1,4 +1,4 @@
-import type { Column, ForeignKey } from "./drivers/types.js";
+import type { Column, ForeignKey, IndexHealth } from "./drivers/types.js";
 
 export type MaskStrategy = "partial" | "email" | "full";
 
@@ -148,11 +148,15 @@ export function visiblePrimaryKey(columns: string[], config: SafetyConfig): stri
 }
 
 export function isColumnHidden(column: string, config: SafetyConfig): boolean {
-  return config.hiddenColumns.some((hidden) => hidden.toLowerCase() === column.toLowerCase());
+  return toLowerSet(config.hiddenColumns).has(column.toLowerCase());
 }
 
-export function referencesHiddenColumn(columns: string[], config: SafetyConfig): boolean {
-  return columns.some((column) => isColumnHidden(column, config));
+export function visibleIndexes(indexes: IndexHealth[], config: SafetyConfig): IndexHealth[] {
+  return indexes.filter(
+    (index) =>
+      isTableAllowed(index.table, config) &&
+      !index.columns.some((column) => isColumnHidden(column, config)),
+  );
 }
 
 export function truncateCells(

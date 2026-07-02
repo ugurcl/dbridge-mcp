@@ -15,11 +15,11 @@ import {
   isTableAllowed,
   maskRows,
   redactRows,
-  referencesHiddenColumn,
   sanitizeQuery,
   truncateCells,
   visibleColumns,
   visibleForeignKeys,
+  visibleIndexes,
   visiblePrimaryKey,
   type SafetyConfig,
 } from "../guard.js";
@@ -202,9 +202,6 @@ export class SqliteDriver implements Driver {
         const columns = info
           .map((column) => column.name)
           .filter((column): column is string => column !== null);
-        if (referencesHiddenColumn(columns, this.safety)) {
-          continue;
-        }
         indexes.push({
           index: entry.name,
           table: name,
@@ -217,10 +214,11 @@ export class SqliteDriver implements Driver {
         });
       }
     }
-    indexes.sort((a, b) => a.table.localeCompare(b.table) || a.index.localeCompare(b.index));
-    markDuplicates(indexes);
+    const visible = visibleIndexes(indexes, this.safety);
+    visible.sort((a, b) => a.table.localeCompare(b.table) || a.index.localeCompare(b.index));
+    markDuplicates(visible);
     return {
-      indexes,
+      indexes: visible,
       notes: ["SQLite does not track index usage, so scan counts and sizes are unavailable."],
     };
   }

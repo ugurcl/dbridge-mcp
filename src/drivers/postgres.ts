@@ -15,11 +15,11 @@ import {
   isTableAllowed,
   maskRows,
   redactRows,
-  referencesHiddenColumn,
   sanitizeQuery,
   truncateCells,
   visibleColumns,
   visibleForeignKeys,
+  visibleIndexes,
   visiblePrimaryKey,
   type SafetyConfig,
 } from "../guard.js";
@@ -78,9 +78,7 @@ export class PostgresDriver implements Driver {
       type: row.data_type,
       nullable: row.is_nullable === "YES",
     }));
-    const dot = table.indexOf(".");
-    const name = dot === -1 ? table : table.slice(dot + 1);
-    const schema = dot === -1 ? await this.resolveSchema(name) : table.slice(0, dot);
+    const { schema, name } = await this.splitQualified(table);
     return {
       columns: visibleColumns(columns, this.safety),
       primaryKey: visiblePrimaryKey(await this.fetchPrimaryKey(schema, name), this.safety),
@@ -145,15 +143,14 @@ export class PostgresDriver implements Driver {
     if (columnRows.length === 0) {
       throw new Error(`Unknown table: ${table}`);
     }
-    const dot = table.indexOf(".");
-    const name = dot === -1 ? table : table.slice(dot + 1);
-    const schema = dot === -1 ? await this.resolveSchema(name) : table.slice(0, dot);
-    const rowEstimate = await this.estimateRowCount(schema, name);
-
-    const { rows: statRows } = await this.client.query(
-      "SELECT attname, n_distinct, null_frac FROM pg_stats WHERE schemaname = $1 AND tablename = $2",
-      [schema, name],
-    );
+    const { schema, name } = await this.splitQualified(table);
+    const [rowEstimate, { rows: statRows }] = await Promise.all([
+      this.estimateRowCount(schema, name),
+      this.client.query(
+        "SELECT attname, n_distinct, null_frac FROM pg_stats WHERE schemaname = $1 AND tablename = $2",
+        [schema, name],
+      ),
+    ]);
     const statsByColumn = new Map(
       statRows.map((row) => [
         String(row.attname),
@@ -197,8 +194,7 @@ export class PostgresDriver implements Driver {
     const tableFilter = table === undefined ? "" : "AND s.relname = $2";
     const params: unknown[] = [this.options.schemas];
     if (table !== undefined) {
-      const dot = table.indexOf(".");
-      params.push(dot === -1 ? table : table.slice(dot + 1));
+      params.push((await this.splitQualified(table)).name);
     }
     const { rows } = await this.client.query(
       `SELECT s.relname AS table_name, s.indexrelname AS index_name, s.idx_scan AS scans,
@@ -219,15 +215,9 @@ export class PostgresDriver implements Driver {
     const indexes: IndexHealth[] = [];
     for (const row of rows) {
       const tableName = String(row.table_name);
-      if (!isTableAllowed(tableName, this.safety)) {
-        continue;
-      }
       const columns = String(row.column_list ?? "")
         .split(",")
         .filter((column) => column.length > 0);
-      if (referencesHiddenColumn(columns, this.safety)) {
-        continue;
-      }
       const scans = row.scans === null || row.scans === undefined ? null : Number(row.scans);
       const primary = Boolean(row.is_primary);
       const unique = Boolean(row.is_unique);
@@ -249,11 +239,20 @@ export class PostgresDriver implements Driver {
         issues,
       });
     }
-    markDuplicates(indexes);
+    const visible = visibleIndexes(indexes, this.safety);
+    markDuplicates(visible);
     return {
-      indexes,
+      indexes: visible,
       notes: ["Scan counts come from pg_stat_user_indexes and reset when database statistics are reset."],
     };
+  }
+
+  private async splitQualified(table: string): Promise<{ schema: string; name: string }> {
+    const dot = table.indexOf(".");
+    if (dot !== -1) {
+      return { schema: table.slice(0, dot), name: table.slice(dot + 1) };
+    }
+    return { schema: await this.resolveSchema(table), name: table };
   }
 
   async close(): Promise<void> {

@@ -15,11 +15,11 @@ import {
   isTableAllowed,
   maskRows,
   redactRows,
-  referencesHiddenColumn,
   sanitizeQuery,
   truncateCells,
   visibleColumns,
   visibleForeignKeys,
+  visibleIndexes,
   visiblePrimaryKey,
   type SafetyConfig,
 } from "../guard.js";
@@ -198,16 +198,10 @@ export class MySqlDriver implements Driver {
     const indexes: IndexHealth[] = [];
     for (const row of rows) {
       const tableName = String(row.table_name ?? row.TABLE_NAME);
-      if (!isTableAllowed(tableName, this.safety)) {
-        continue;
-      }
       const indexName = String(row.index_name ?? row.INDEX_NAME);
       const columns = String(row.column_list ?? row.COLUMN_LIST ?? "")
         .split(",")
         .filter((column) => column.length > 0);
-      if (referencesHiddenColumn(columns, this.safety)) {
-        continue;
-      }
       indexes.push({
         index: indexName,
         table: tableName,
@@ -219,12 +213,13 @@ export class MySqlDriver implements Driver {
         issues: [],
       });
     }
-    markDuplicates(indexes);
+    const visible = visibleIndexes(indexes, this.safety);
+    markDuplicates(visible);
     const notes = [
       "MySQL index sizes are not reported per index; scan counts require performance_schema.",
     ];
-    await this.applyUnusedIndexInfo(indexes, notes);
-    return { indexes, notes };
+    await this.applyUnusedIndexInfo(visible, notes);
+    return { indexes: visible, notes };
   }
 
   private async applyUnusedIndexInfo(indexes: IndexHealth[], notes: string[]): Promise<void> {

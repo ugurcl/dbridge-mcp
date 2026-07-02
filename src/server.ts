@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Driver, QueryResult } from "./drivers/types.js";
@@ -15,7 +16,7 @@ export function createServer(driver: Driver, deps: ServerDeps = {}): McpServer {
   const audit = deps.audit ?? (() => undefined);
   const limiter = deps.limiter ?? { take: () => undefined };
   const limits = deps.limits ?? {};
-  const server = new McpServer({ name: "dbridge-mcp", version: "0.8.0" });
+  const server = new McpServer({ name: "dbridge-mcp", version: PACKAGE_VERSION });
 
   const run = <T>(tool: string, details: Record<string, unknown>, action: () => Promise<T>) =>
     track(tool, details, audit, action);
@@ -129,11 +130,9 @@ export function createServer(driver: Driver, deps: ServerDeps = {}): McpServer {
     async ({ table }) =>
       textResult(
         await run("column_stats", { table }, () => {
-          if (!driver.columnStats) {
-            throw new Error("column_stats is not supported for this database engine.");
-          }
+          const stats = requireCapability(driver.columnStats, "column_stats").bind(driver);
           limiter.take();
-          return driver.columnStats(table);
+          return stats(table);
         }),
       ),
   );
@@ -151,11 +150,9 @@ export function createServer(driver: Driver, deps: ServerDeps = {}): McpServer {
     async ({ table }) =>
       textResult(
         await run("index_health", { table }, () => {
-          if (!driver.indexHealth) {
-            throw new Error("index_health is not supported for this database engine.");
-          }
+          const health = requireCapability(driver.indexHealth, "index_health").bind(driver);
           limiter.take();
-          return driver.indexHealth(table);
+          return health(table);
         }),
       ),
   );
@@ -194,6 +191,15 @@ export function createServer(driver: Driver, deps: ServerDeps = {}): McpServer {
   );
 
   return server;
+}
+
+const PACKAGE_VERSION = createRequire(import.meta.url)("../package.json").version as string;
+
+function requireCapability<T>(method: T | undefined, tool: string): T {
+  if (!method) {
+    throw new Error(`${tool} is not supported for this database engine.`);
+  }
+  return method;
 }
 
 async function track<T>(
