@@ -98,3 +98,25 @@ function createAdmin(connectionUrl) {
     }
   };
 }
+
+test("column_stats hides restricted columns and reports indexed cardinality", { skip }, async () => {
+  const stats = await driver.columnStats("t_emp");
+  const names = stats.columns.map((c) => c.column);
+  assert.ok(names.includes("id"));
+  assert.ok(!names.includes("maas"));
+  const id = stats.columns.find((c) => c.column === "id");
+  assert.equal(typeof id.distinctValues, "number");
+});
+
+test("index_health flags duplicate indexes", { skip }, async () => {
+  const admin = createAdmin(url);
+  await admin([
+    "CREATE INDEX idx_emp_dept1 ON t_emp (dept_id)",
+    "CREATE INDEX idx_emp_dept2 ON t_emp (dept_id)",
+  ]);
+  const report = await driver.indexHealth("t_emp");
+  const dup = report.indexes.find((i) => i.index === "idx_emp_dept2");
+  assert.ok(dup.issues.some((issue) => issue.includes("duplicate")));
+  const primary = report.indexes.find((i) => i.index === "PRIMARY");
+  assert.equal(primary.primary, true);
+});

@@ -1,11 +1,21 @@
-import type { Driver, ForeignKey, QueryResult, TableSchema } from "./types.js";
+import type {
+  Driver,
+  ForeignKey,
+  IndexHealth,
+  IndexHealthReport,
+  QueryResult,
+  TableSchema,
+  TableStats,
+} from "./types.js";
 import {
   capBytes,
   capRows,
   filterTables,
+  isColumnHidden,
   isTableAllowed,
   maskRows,
   redactRows,
+  referencesHiddenColumn,
   sanitizeQuery,
   truncateCells,
   visibleColumns,
@@ -13,6 +23,7 @@ import {
   visiblePrimaryKey,
   type SafetyConfig,
 } from "../guard.js";
+import { markDuplicates } from "./perf.js";
 
 type Rows = { rows: Record<string, unknown>[] };
 type Runner = (text: string, params?: unknown[]) => Promise<Rows>;
@@ -117,6 +128,126 @@ export class MySqlDriver implements Driver {
       return result.rows;
     });
     return Number((rows[0] as { count: string | number }).count);
+  }
+
+  async columnStats(table: string): Promise<TableStats> {
+    if (!isTableAllowed(table, this.safety)) {
+      throw new Error(`Unknown table: ${table}`);
+    }
+    const columnRows = await this.fetchColumns(table);
+    if (columnRows.length === 0) {
+      throw new Error(`Unknown table: ${table}`);
+    }
+    const rowEstimate = await this.estimateRowCount(table);
+    const { rows } = await this.client.query(
+      `SELECT column_name, MAX(cardinality) AS cardinality
+       FROM information_schema.statistics
+       WHERE table_schema = DATABASE() AND table_name = ?
+       GROUP BY column_name`,
+      [table],
+    );
+    const cardinalityByColumn = new Map(
+      rows.map((row) => [
+        String(row.column_name ?? row.COLUMN_NAME).toLowerCase(),
+        Number(row.cardinality ?? row.CARDINALITY),
+      ]),
+    );
+    const columns = columnRows
+      .filter((row) => !isColumnHidden(row.column_name, this.safety))
+      .map((row) => {
+        const cardinality = cardinalityByColumn.get(row.column_name.toLowerCase());
+        if (cardinality === undefined || !Number.isFinite(cardinality)) {
+          return {
+            column: row.column_name,
+            type: row.data_type,
+            distinctValues: null,
+            nullFraction: null,
+            note: "not indexed; MySQL only tracks cardinality for indexed columns",
+          };
+        }
+        return {
+          column: row.column_name,
+          type: row.data_type,
+          distinctValues: Math.round(cardinality),
+          nullFraction: null,
+        };
+      });
+    return {
+      table,
+      rowEstimate,
+      columns,
+      notes: ["MySQL cardinality comes from index statistics; null fractions are not tracked."],
+    };
+  }
+
+  async indexHealth(table?: string): Promise<IndexHealthReport> {
+    if (table !== undefined && !isTableAllowed(table, this.safety)) {
+      throw new Error(`Unknown table: ${table}`);
+    }
+    const tableFilter = table === undefined ? "" : "AND table_name = ?";
+    const params = table === undefined ? [] : [table];
+    const { rows } = await this.client.query(
+      `SELECT table_name, index_name, MAX(non_unique) AS non_unique,
+              GROUP_CONCAT(column_name ORDER BY seq_in_index) AS column_list
+       FROM information_schema.statistics
+       WHERE table_schema = DATABASE() ${tableFilter}
+       GROUP BY table_name, index_name
+       ORDER BY table_name, index_name`,
+      params,
+    );
+    const indexes: IndexHealth[] = [];
+    for (const row of rows) {
+      const tableName = String(row.table_name ?? row.TABLE_NAME);
+      if (!isTableAllowed(tableName, this.safety)) {
+        continue;
+      }
+      const indexName = String(row.index_name ?? row.INDEX_NAME);
+      const columns = String(row.column_list ?? row.COLUMN_LIST ?? "")
+        .split(",")
+        .filter((column) => column.length > 0);
+      if (referencesHiddenColumn(columns, this.safety)) {
+        continue;
+      }
+      indexes.push({
+        index: indexName,
+        table: tableName,
+        columns,
+        unique: Number(row.non_unique ?? row.NON_UNIQUE) === 0,
+        primary: indexName === "PRIMARY",
+        sizeBytes: null,
+        scans: null,
+        issues: [],
+      });
+    }
+    markDuplicates(indexes);
+    const notes = [
+      "MySQL index sizes are not reported per index; scan counts require performance_schema.",
+    ];
+    await this.applyUnusedIndexInfo(indexes, notes);
+    return { indexes, notes };
+  }
+
+  private async applyUnusedIndexInfo(indexes: IndexHealth[], notes: string[]): Promise<void> {
+    try {
+      const { rows } = await this.client.query(
+        "SELECT object_name, index_name FROM sys.schema_unused_indexes WHERE object_schema = DATABASE()",
+      );
+      const unused = new Set(
+        rows.map(
+          (row) =>
+            `${String(row.object_name ?? row.OBJECT_NAME)}::${String(row.index_name ?? row.INDEX_NAME)}`.toLowerCase(),
+        ),
+      );
+      for (const index of indexes) {
+        if (unused.has(`${index.table}::${index.index}`.toLowerCase())) {
+          index.scans = 0;
+          index.issues.push("unused: never scanned since the server started");
+        }
+      }
+      notes.push("Unused-index detection comes from sys.schema_unused_indexes (resets on server restart).");
+    } catch {
+      notes.push("sys.schema_unused_indexes is not accessible, so unused-index detection was skipped.");
+    }
   }
 
   async close(): Promise<void> {

@@ -1,5 +1,13 @@
 import { DatabaseSync } from "node:sqlite";
-import type { Driver, ForeignKey, QueryResult, TableSchema } from "./types.js";
+import type {
+  Driver,
+  ForeignKey,
+  IndexHealth,
+  IndexHealthReport,
+  QueryResult,
+  TableSchema,
+  TableStats,
+} from "./types.js";
 import {
   capBytes,
   capRows,
@@ -7,6 +15,7 @@ import {
   isTableAllowed,
   maskRows,
   redactRows,
+  referencesHiddenColumn,
   sanitizeQuery,
   truncateCells,
   visibleColumns,
@@ -14,6 +23,9 @@ import {
   visiblePrimaryKey,
   type SafetyConfig,
 } from "../guard.js";
+import { markDuplicates, round4 } from "./perf.js";
+
+const MAX_STATS_SCAN_ROWS = 1_000_000;
 
 interface TableInfoRow {
   name: string;
@@ -130,6 +142,87 @@ export class SqliteDriver implements Driver {
       .prepare(`SELECT count(*) AS count FROM ${quoteIdent(table)}`)
       .get() as { count: number };
     return Number(row.count);
+  }
+
+  async columnStats(table: string): Promise<TableStats> {
+    const schema = await this.describeTable(table);
+    const rowCount = await this.countRows(table);
+    if (rowCount > MAX_STATS_SCAN_ROWS) {
+      return {
+        table,
+        rowEstimate: rowCount,
+        columns: schema.columns.map((column) => ({
+          column: column.name,
+          type: column.type,
+          distinctValues: null,
+          nullFraction: null,
+        })),
+        notes: [
+          `Table has ${rowCount} rows; skipping the distinct-value scan to avoid a heavy full-table read.`,
+        ],
+      };
+    }
+    const selects = schema.columns
+      .map((column, i) => {
+        const ident = quoteIdent(column.name);
+        return `COUNT(DISTINCT ${ident}) AS d${i}, SUM(CASE WHEN ${ident} IS NULL THEN 1 ELSE 0 END) AS n${i}`;
+      })
+      .join(", ");
+    const row =
+      schema.columns.length === 0
+        ? {}
+        : (this.db
+            .prepare(`SELECT ${selects} FROM ${quoteIdent(table)}`)
+            .get() as Record<string, number | bigint | null>);
+    const columns = schema.columns.map((column, i) => ({
+      column: column.name,
+      type: column.type,
+      distinctValues: Number(row[`d${i}`] ?? 0),
+      nullFraction: rowCount === 0 ? null : round4(Number(row[`n${i}`] ?? 0) / rowCount),
+    }));
+    return { table, rowEstimate: rowCount, columns, notes: [] };
+  }
+
+  async indexHealth(table?: string): Promise<IndexHealthReport> {
+    const tables = table === undefined ? await this.listTables() : [table];
+    if (table !== undefined && !(await this.listTables()).includes(table)) {
+      throw new Error(`Unknown table: ${table}`);
+    }
+    const indexes: IndexHealth[] = [];
+    for (const name of tables) {
+      const list = this.db.prepare(`PRAGMA index_list(${quoteIdent(name)})`).all() as unknown as {
+        name: string;
+        unique: number;
+        origin: string;
+      }[];
+      for (const entry of list) {
+        const info = this.db
+          .prepare(`PRAGMA index_info(${quoteIdent(entry.name)})`)
+          .all() as unknown as { name: string | null }[];
+        const columns = info
+          .map((column) => column.name)
+          .filter((column): column is string => column !== null);
+        if (referencesHiddenColumn(columns, this.safety)) {
+          continue;
+        }
+        indexes.push({
+          index: entry.name,
+          table: name,
+          columns,
+          unique: entry.unique === 1,
+          primary: entry.origin === "pk",
+          sizeBytes: null,
+          scans: null,
+          issues: [],
+        });
+      }
+    }
+    indexes.sort((a, b) => a.table.localeCompare(b.table) || a.index.localeCompare(b.index));
+    markDuplicates(indexes);
+    return {
+      indexes,
+      notes: ["SQLite does not track index usage, so scan counts and sizes are unavailable."],
+    };
   }
 
   async close(): Promise<void> {

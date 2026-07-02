@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.0]
+
+### Added
+
+- `column_stats` tool: per-column distinct-value counts and null fractions
+  (PostgreSQL `pg_stats`, MySQL index cardinality, SQLite bounded scan),
+  respecting hidden-column rules.
+- `index_health` tool: per-index columns, size, and scan counts with
+  unused / duplicate / invalid flags (PostgreSQL `pg_stat_user_indexes`,
+  MySQL `information_schema` + `sys.schema_unused_indexes`, SQLite PRAGMAs).
+
 ## [0.7.1]
 
 ### Added

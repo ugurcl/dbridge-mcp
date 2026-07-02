@@ -15,7 +15,7 @@ export function createServer(driver: Driver, deps: ServerDeps = {}): McpServer {
   const audit = deps.audit ?? (() => undefined);
   const limiter = deps.limiter ?? { take: () => undefined };
   const limits = deps.limits ?? {};
-  const server = new McpServer({ name: "dbridge-mcp", version: "0.7.0" });
+  const server = new McpServer({ name: "dbridge-mcp", version: "0.8.0" });
 
   const run = <T>(tool: string, details: Record<string, unknown>, action: () => Promise<T>) =>
     track(tool, details, audit, action);
@@ -116,6 +116,48 @@ export function createServer(driver: Driver, deps: ServerDeps = {}): McpServer {
       },
     },
     async ({ sql }) => textResult(await run("explain_query", { sql }, () => driver.explainQuery(sql))),
+  );
+
+  server.registerTool(
+    "column_stats",
+    {
+      title: "Column statistics",
+      description:
+        "Returns per-column cardinality (distinct values) and null fraction for a table. Use it to judge whether a column is selective enough to be worth indexing or grouping by.",
+      inputSchema: { table: z.string().describe("Exact table name") },
+    },
+    async ({ table }) =>
+      textResult(
+        await run("column_stats", { table }, () => {
+          if (!driver.columnStats) {
+            throw new Error("column_stats is not supported for this database engine.");
+          }
+          limiter.take();
+          return driver.columnStats(table);
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "index_health",
+    {
+      title: "Index health",
+      description:
+        "Lists indexes with their columns, size, and scan counts, flagging unused, duplicate, and invalid indexes. Use it to spot dead weight before recommending a new index.",
+      inputSchema: {
+        table: z.string().optional().describe("Limit the report to one table; omit for all tables"),
+      },
+    },
+    async ({ table }) =>
+      textResult(
+        await run("index_health", { table }, () => {
+          if (!driver.indexHealth) {
+            throw new Error("index_health is not supported for this database engine.");
+          }
+          limiter.take();
+          return driver.indexHealth(table);
+        }),
+      ),
   );
 
   server.registerTool(

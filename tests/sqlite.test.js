@@ -20,6 +20,9 @@ before(() => {
     "CREATE TABLE gorev (id INTEGER PRIMARY KEY, personel_id INTEGER REFERENCES personel(id), ad TEXT);",
   );
   seed.exec("CREATE TABLE secrets (token TEXT); INSERT INTO secrets VALUES ('x');");
+  seed.exec(
+    "CREATE INDEX idx_gorev_p1 ON gorev(personel_id); CREATE INDEX idx_gorev_p2 ON gorev(personel_id); CREATE INDEX idx_personel_maas ON personel(maas);",
+  );
   seed.close();
   driver = new SqliteDriver(path, {
     maxRows: 1000,
@@ -130,4 +133,29 @@ test("masks configured columns in results", async () => {
   const result = await masking.runQuery("SELECT email FROM m");
   assert.equal(result.rows[0].email, "a***@site.com");
   await masking.close();
+});
+
+test("column_stats reports cardinality and hides restricted columns", async () => {
+  const stats = await driver.columnStats("personel");
+  assert.equal(stats.rowEstimate, 2);
+  assert.deepEqual(
+    stats.columns.map((c) => c.column),
+    ["id", "ad"],
+  );
+  const ad = stats.columns.find((c) => c.column === "ad");
+  assert.equal(ad.distinctValues, 2);
+  assert.equal(ad.nullFraction, 0);
+});
+
+test("index_health flags duplicate indexes and skips hidden-column indexes", async () => {
+  const report = await driver.indexHealth();
+  const names = report.indexes.map((i) => i.index);
+  assert.ok(names.includes("idx_gorev_p1"));
+  assert.ok(!names.includes("idx_personel_maas"));
+  const dup = report.indexes.find((i) => i.index === "idx_gorev_p2");
+  assert.ok(dup.issues.some((issue) => issue.includes('duplicate: covers the same columns as "idx_gorev_p1"')));
+});
+
+test("index_health rejects an unknown table", async () => {
+  await assert.rejects(() => driver.indexHealth("yok"));
 });

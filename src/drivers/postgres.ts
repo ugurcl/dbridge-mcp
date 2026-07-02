@@ -1,11 +1,21 @@
-import type { Driver, ForeignKey, QueryResult, TableSchema } from "./types.js";
+import type {
+  Driver,
+  ForeignKey,
+  IndexHealth,
+  IndexHealthReport,
+  QueryResult,
+  TableSchema,
+  TableStats,
+} from "./types.js";
 import {
   capBytes,
   capRows,
   filterTables,
+  isColumnHidden,
   isTableAllowed,
   maskRows,
   redactRows,
+  referencesHiddenColumn,
   sanitizeQuery,
   truncateCells,
   visibleColumns,
@@ -13,6 +23,7 @@ import {
   visiblePrimaryKey,
   type SafetyConfig,
 } from "../guard.js";
+import { markDuplicates, round4 } from "./perf.js";
 
 type Rows = { rows: Record<string, unknown>[] };
 type Runner = (text: string, params?: unknown[]) => Promise<Rows>;
@@ -126,6 +137,125 @@ export class PostgresDriver implements Driver {
     return Number((rows[0] as { count: string | number }).count);
   }
 
+  async columnStats(table: string): Promise<TableStats> {
+    if (!isTableAllowed(table, this.safety)) {
+      throw new Error(`Unknown table: ${table}`);
+    }
+    const columnRows = await this.fetchColumns(table);
+    if (columnRows.length === 0) {
+      throw new Error(`Unknown table: ${table}`);
+    }
+    const dot = table.indexOf(".");
+    const name = dot === -1 ? table : table.slice(dot + 1);
+    const schema = dot === -1 ? await this.resolveSchema(name) : table.slice(0, dot);
+    const rowEstimate = await this.estimateRowCount(schema, name);
+
+    const { rows: statRows } = await this.client.query(
+      "SELECT attname, n_distinct, null_frac FROM pg_stats WHERE schemaname = $1 AND tablename = $2",
+      [schema, name],
+    );
+    const statsByColumn = new Map(
+      statRows.map((row) => [
+        String(row.attname),
+        { nDistinct: Number(row.n_distinct), nullFrac: Number(row.null_frac) },
+      ]),
+    );
+
+    const notes: string[] = [];
+    if (statRows.length === 0) {
+      notes.push("No planner statistics for this table yet; ask the DBA to run ANALYZE for accurate numbers.");
+    }
+
+    const columns = columnRows
+      .filter((row) => !isColumnHidden(row.column_name, this.safety))
+      .map((row) => {
+        const stat = statsByColumn.get(row.column_name);
+        if (!stat) {
+          return {
+            column: row.column_name,
+            type: row.data_type,
+            distinctValues: null,
+            nullFraction: null,
+            note: "no statistics",
+          };
+        }
+        return {
+          column: row.column_name,
+          type: row.data_type,
+          distinctValues: normalizeDistinct(stat.nDistinct, rowEstimate),
+          nullFraction: Number.isFinite(stat.nullFrac) ? round4(stat.nullFrac) : null,
+        };
+      });
+
+    return { table, rowEstimate, columns, notes };
+  }
+
+  async indexHealth(table?: string): Promise<IndexHealthReport> {
+    if (table !== undefined && !isTableAllowed(table, this.safety)) {
+      throw new Error(`Unknown table: ${table}`);
+    }
+    const tableFilter = table === undefined ? "" : "AND s.relname = $2";
+    const params: unknown[] = [this.options.schemas];
+    if (table !== undefined) {
+      const dot = table.indexOf(".");
+      params.push(dot === -1 ? table : table.slice(dot + 1));
+    }
+    const { rows } = await this.client.query(
+      `SELECT s.relname AS table_name, s.indexrelname AS index_name, s.idx_scan AS scans,
+              pg_relation_size(s.indexrelid) AS size_bytes,
+              i.indisunique AS is_unique, i.indisprimary AS is_primary, i.indisvalid AS is_valid,
+              array_to_string(array(
+                SELECT a.attname FROM unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord)
+                JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum
+                ORDER BY k.ord
+              ), ',') AS column_list
+       FROM pg_stat_user_indexes s
+       JOIN pg_index i ON i.indexrelid = s.indexrelid
+       WHERE s.schemaname = ANY($1) ${tableFilter}
+       ORDER BY s.relname, s.indexrelname`,
+      params,
+    );
+
+    const indexes: IndexHealth[] = [];
+    for (const row of rows) {
+      const tableName = String(row.table_name);
+      if (!isTableAllowed(tableName, this.safety)) {
+        continue;
+      }
+      const columns = String(row.column_list ?? "")
+        .split(",")
+        .filter((column) => column.length > 0);
+      if (referencesHiddenColumn(columns, this.safety)) {
+        continue;
+      }
+      const scans = row.scans === null || row.scans === undefined ? null : Number(row.scans);
+      const primary = Boolean(row.is_primary);
+      const unique = Boolean(row.is_unique);
+      const issues: string[] = [];
+      if (row.is_valid === false) {
+        issues.push("invalid: the index failed to build and is not used by the planner");
+      }
+      if (scans === 0 && !primary && !unique) {
+        issues.push("unused: never scanned since statistics were last reset");
+      }
+      indexes.push({
+        index: String(row.index_name),
+        table: tableName,
+        columns,
+        unique,
+        primary,
+        sizeBytes: row.size_bytes === null || row.size_bytes === undefined ? null : Number(row.size_bytes),
+        scans,
+        issues,
+      });
+    }
+    markDuplicates(indexes);
+    return {
+      indexes,
+      notes: ["Scan counts come from pg_stat_user_indexes and reset when database statistics are reset."],
+    };
+  }
+
   async close(): Promise<void> {
     await this.closer();
   }
@@ -228,6 +358,20 @@ export class PostgresDriver implements Driver {
     );
     return rows as unknown as ColumnRow[];
   }
+}
+
+function normalizeDistinct(nDistinct: number, rowEstimate: number | null): number | null {
+  if (!Number.isFinite(nDistinct)) {
+    return null;
+  }
+  if (nDistinct >= 0) {
+    return Math.round(nDistinct);
+  }
+  // Negative means "fraction of rows are distinct" (e.g. -1 = all rows unique).
+  if (rowEstimate === null || rowEstimate <= 0) {
+    return null;
+  }
+  return Math.round(-nDistinct * rowEstimate);
 }
 
 function extractCost(plan: unknown): number | undefined {

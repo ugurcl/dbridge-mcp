@@ -147,6 +147,14 @@ export function visiblePrimaryKey(columns: string[], config: SafetyConfig): stri
   return columns.filter((column) => !hidden.has(column.toLowerCase()));
 }
 
+export function isColumnHidden(column: string, config: SafetyConfig): boolean {
+  return config.hiddenColumns.some((hidden) => hidden.toLowerCase() === column.toLowerCase());
+}
+
+export function referencesHiddenColumn(columns: string[], config: SafetyConfig): boolean {
+  return columns.some((column) => isColumnHidden(column, config));
+}
+
 export function truncateCells(
   rows: Record<string, unknown>[],
   maxChars: number,
