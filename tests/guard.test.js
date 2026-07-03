@@ -11,6 +11,7 @@ import {
   truncateCells,
   capBytes,
   DEFAULT_SAFETY,
+  sanitizeIndexDefinition,
 } from "../dist/guard.js";
 
 const withHidden = { ...DEFAULT_SAFETY, maxRows: 1000, hiddenColumns: ["maas"] };
@@ -149,4 +150,28 @@ test("capBytes stops once the byte budget is exceeded", () => {
   assert.ok(result.truncated);
   assert.ok(result.rows.length >= 1 && result.rows.length < 100);
   assert.deepEqual(capBytes(rows, 0), { rows, truncated: false });
+});
+
+test("sanitizeIndexDefinition accepts a plain CREATE INDEX", () => {
+  const { sql, table } = sanitizeIndexDefinition(
+    "CREATE INDEX idx_s ON sales (customer_id);",
+    DEFAULT_SAFETY,
+  );
+  assert.equal(sql, "CREATE INDEX idx_s ON sales (customer_id)");
+  assert.equal(table, "sales");
+});
+
+test("sanitizeIndexDefinition rejects non-index statements", () => {
+  assert.throws(() => sanitizeIndexDefinition("DROP TABLE sales", DEFAULT_SAFETY));
+  assert.throws(() => sanitizeIndexDefinition("SELECT 1", DEFAULT_SAFETY));
+  assert.throws(() =>
+    sanitizeIndexDefinition("CREATE INDEX i ON s (a); DROP TABLE s", DEFAULT_SAFETY),
+  );
+});
+
+test("sanitizeIndexDefinition honors blocked tables and hidden columns", () => {
+  const blocked = { ...DEFAULT_SAFETY, blockedTables: ["employees"] };
+  assert.throws(() => sanitizeIndexDefinition("CREATE INDEX i ON employees (id)", blocked));
+  const hidden = { ...DEFAULT_SAFETY, hiddenColumns: ["salary"] };
+  assert.throws(() => sanitizeIndexDefinition("CREATE INDEX i ON t (salary)", hidden));
 });

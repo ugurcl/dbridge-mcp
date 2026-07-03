@@ -55,6 +55,17 @@ export interface IndexHealthReport {
   notes: string[];
 }
 
+export interface IndexTestResult {
+  index: string;
+  used: boolean;
+  costBefore: number | null;
+  costAfter: number | null;
+  improvementPct: number | null;
+  verdict: string;
+  planBefore: unknown;
+  planAfter: unknown;
+}
+
 export interface Driver {
   listTables(): Promise<string[]>;
   describeTable(table: string): Promise<TableSchema>;
@@ -63,5 +74,6 @@ export interface Driver {
   countRows(table: string): Promise<number>;
   columnStats?(table: string): Promise<TableStats>;
   indexHealth?(table?: string): Promise<IndexHealthReport>;
+  testIndex?(indexSql: string, querySql: string): Promise<IndexTestResult>;
   close(): Promise<void>;
 }

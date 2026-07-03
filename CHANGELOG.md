@@ -14,6 +14,11 @@ All notable changes to this project are documented here. The format follows
 - `index_health` tool: per-index columns, size, and scan counts with
   unused / duplicate / invalid flags (PostgreSQL `pg_stat_user_indexes`,
   MySQL `information_schema` + `sys.schema_unused_indexes`, SQLite PRAGMAs).
+- `test_index` tool (PostgreSQL, requires the `hypopg` extension): simulates a
+  `CREATE INDEX` hypothetically inside the read-only transaction and reports
+  whether the planner would use it, with before/after cost estimates. The
+  index definition passes the same guard as queries (blocked tables and
+  hidden columns are rejected).
 
 ## [0.7.1]
 

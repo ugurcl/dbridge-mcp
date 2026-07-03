@@ -158,6 +158,31 @@ export function createServer(driver: Driver, deps: ServerDeps = {}): McpServer {
   );
 
   server.registerTool(
+    "test_index",
+    {
+      title: "Test a hypothetical index",
+      description:
+        "Simulates a CREATE INDEX without building it (PostgreSQL with the hypopg extension) and reports whether the planner would use it for a given query, with before/after cost estimates. Use this to validate an index idea before recommending it.",
+      inputSchema: {
+        index: z
+          .string()
+          .describe('A single CREATE INDEX statement, e.g. CREATE INDEX ON sales (customer_id)'),
+        query: z
+          .string()
+          .describe("The read-only SELECT the index is supposed to speed up"),
+      },
+    },
+    async ({ index, query }) =>
+      textResult(
+        await run("test_index", { index, query }, () => {
+          const testIndex = requireCapability(driver.testIndex, "test_index").bind(driver);
+          limiter.take();
+          return testIndex(index, query);
+        }),
+      ),
+  );
+
+  server.registerTool(
     "get_limits",
     {
       title: "Get active limits",

@@ -3,6 +3,7 @@ import type {
   ForeignKey,
   IndexHealth,
   IndexHealthReport,
+  IndexTestResult,
   QueryResult,
   TableSchema,
   TableStats,
@@ -15,6 +16,7 @@ import {
   isTableAllowed,
   maskRows,
   redactRows,
+  sanitizeIndexDefinition,
   sanitizeQuery,
   truncateCells,
   visibleColumns,
@@ -113,10 +115,8 @@ export class PostgresDriver implements Driver {
   async explainQuery(sql: string): Promise<unknown> {
     const { sql: statement } = sanitizeQuery(sql, this.safety);
     return this.readOnly(async (run) => {
-      const { rows } = await run(`EXPLAIN (FORMAT JSON) ${statement}`);
-      const plan = (rows[0] as { "QUERY PLAN"?: unknown })["QUERY PLAN"];
-      const totalCost = extractCost(plan);
-      return { totalCost, plan };
+      const plan = await this.fetchPlan(run, statement);
+      return { totalCost: extractCost(plan), plan };
     });
   }
 
@@ -245,6 +245,61 @@ export class PostgresDriver implements Driver {
       indexes: visible,
       notes: ["Scan counts come from pg_stat_user_indexes and reset when database statistics are reset."],
     };
+  }
+
+  async testIndex(indexSql: string, querySql: string): Promise<IndexTestResult> {
+    const { sql: definition } = sanitizeIndexDefinition(indexSql, this.safety);
+    const { sql: query } = sanitizeQuery(querySql, this.safety);
+    return this.readOnly(async (run) => {
+      const { rows: extension } = await run(
+        "SELECT 1 FROM pg_extension WHERE extname = 'hypopg'",
+      );
+      if (extension.length === 0) {
+        throw new Error(
+          "test_index needs the hypopg extension. Ask the DBA to run: CREATE EXTENSION hypopg;",
+        );
+      }
+      try {
+        const planBefore = await this.fetchPlan(run, query);
+        const costBefore = extractCost(planBefore) ?? null;
+
+        const { rows: created } = await run("SELECT indexname FROM hypopg_create_index($1)", [
+          definition,
+        ]);
+        const hypoName = String((created[0] as { indexname: string }).indexname);
+
+        const planAfter = await this.fetchPlan(run, query);
+        const costAfter = extractCost(planAfter) ?? null;
+        const used = JSON.stringify(planAfter).includes(hypoName);
+
+        const improvementPct =
+          used && costBefore !== null && costAfter !== null && costBefore > 0
+            ? Math.round(((costBefore - costAfter) / costBefore) * 1000) / 10
+            : null;
+        const verdict = used
+          ? `The planner would use this index: estimated cost ${costBefore} -> ${costAfter}` +
+            (improvementPct !== null ? ` (${improvementPct}% cheaper).` : ".")
+          : "The planner ignores this index for the given query; creating it would not help.";
+
+        return {
+          index: definition,
+          used,
+          costBefore,
+          costAfter,
+          improvementPct,
+          verdict,
+          planBefore,
+          planAfter,
+        };
+      } finally {
+        await run("SELECT hypopg_reset()").catch(() => undefined);
+      }
+    });
+  }
+
+  private async fetchPlan(run: Runner, query: string): Promise<unknown> {
+    const { rows } = await run(`EXPLAIN (FORMAT JSON) ${query}`);
+    return (rows[0] as { "QUERY PLAN"?: unknown })["QUERY PLAN"];
   }
 
   private async splitQualified(table: string): Promise<{ schema: string; name: string }> {

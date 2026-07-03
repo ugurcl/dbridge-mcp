@@ -87,6 +87,39 @@ function applyRowCap(clean: string, maxRows: number): SanitizedQuery {
   return { sql: `${head}LIMIT ${maxRows + 1}${offset}`, rowCap: maxRows };
 }
 
+const INDEX_DDL =
+  /^create\s+(?:unique\s+)?index\s+(?:concurrently\s+)?(?:if\s+not\s+exists\s+)?(?:[\w"]+\s+)?on\s+([\w".]+)\s*(?:using\s+\w+\s*)?\((.+)\)[\s\w()]*$/i;
+
+export interface SanitizedIndexDefinition {
+  sql: string;
+  table: string;
+}
+
+export function sanitizeIndexDefinition(
+  sql: string,
+  config: SafetyConfig,
+): SanitizedIndexDefinition {
+  const clean = sql.trim().replace(/;+\s*$/, "");
+  if (clean.includes(";")) {
+    throw new Error("Only a single CREATE INDEX statement is allowed.");
+  }
+  const match = clean.match(INDEX_DDL);
+  if (!match) {
+    throw new Error(
+      "Expected a single CREATE [UNIQUE] INDEX ... ON table (columns) statement.",
+    );
+  }
+  const table = match[1].replace(/"/g, "");
+  if (!isTableAllowed(table, config)) {
+    throw new Error(`Unknown table: ${table}`);
+  }
+  const restricted = config.hiddenColumns.find((column) => containsWord(match[2], column));
+  if (restricted) {
+    throw new Error(`Column "${restricted}" is restricted and cannot be indexed.`);
+  }
+  return { sql: clean, table };
+}
+
 export function visibleColumns(columns: Column[], config: SafetyConfig): Column[] {
   if (config.hiddenColumns.length === 0) {
     return columns;

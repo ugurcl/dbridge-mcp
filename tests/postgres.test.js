@@ -177,3 +177,25 @@ test("index_health scoped to one table only returns its indexes", async () => {
   assert.ok(report.indexes.every((i) => i.table === "gorev"));
   assert.ok(report.indexes.length >= 2);
 });
+
+test("test_index explains that hypopg is missing", async () => {
+  await assert.rejects(
+    () => driver.testIndex("CREATE INDEX ON gorev (ad)", "SELECT * FROM gorev WHERE ad = 'x'"),
+    /hypopg/,
+  );
+});
+
+test("test_index validates the index definition first", async () => {
+  await assert.rejects(
+    () => driver.testIndex("DROP TABLE gorev", "SELECT 1"),
+    /CREATE \[UNIQUE\] INDEX/,
+  );
+  await assert.rejects(
+    () => driver.testIndex("CREATE INDEX i ON secrets (token)", "SELECT 1"),
+    /Unknown table/,
+  );
+  await assert.rejects(
+    () => driver.testIndex("CREATE INDEX i ON personel (maas)", "SELECT 1"),
+    /restricted/,
+  );
+});
