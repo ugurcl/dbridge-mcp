@@ -52,7 +52,7 @@ test("test_index reports whether the planner would use a hypothetical index", { 
   assert.ok(result.verdict.length > 0);
   if (result.used) {
     assert.ok(result.costAfter <= result.costBefore);
-    assert.ok(JSON.stringify(result.planAfter).includes("btree_sales_customer_id"));
+    assert.ok(JSON.stringify(result.plan).includes("btree_sales_customer_id"));
   }
 });
 

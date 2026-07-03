@@ -36,7 +36,7 @@ There are many database MCP servers. dbridge is built around one idea — **you 
 - **Column-level privacy.** Hide columns from the model entirely, or mask values (`a***@site.com`) while keeping them queryable. Most servers expose whatever the connection can see.
 - **Blast-radius controls.** Row caps enforced over user-supplied `LIMIT`s, per-query timeouts, `EXPLAIN`-based cost rejection for expensive queries, per-minute rate limits, and a capped connection pool.
 - **No native build step.** SQLite uses Node's built-in `node:sqlite`, so `npx -y dbridge-mcp` works without a compiler toolchain.
-- **Performance insight, not just queries.** `column_stats` and `index_health` give the model real cardinality and index-usage data, and `test_index` simulates an index with hypopg before anyone builds it — so the model's optimization advice is grounded in the actual database instead of guesswork. No more agents adding useless indexes to 60M-row tables.
+- **Performance insight, not just queries.** `column_stats` and `index_health` give the model real cardinality and index-usage data, and `test_index` simulates an index with hypopg before anyone builds it — so the model's optimization advice is grounded in the actual database instead of guesswork.
 
 If all you need is "run SQL from my agent", plenty of servers do that. dbridge is for pointing an agent at data you actually care about.
 

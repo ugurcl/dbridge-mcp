@@ -60,10 +60,8 @@ export interface IndexTestResult {
   used: boolean;
   costBefore: number | null;
   costAfter: number | null;
-  improvementPct: number | null;
   verdict: string;
-  planBefore: unknown;
-  planAfter: unknown;
+  plan: unknown;
 }
 
 export interface Driver {

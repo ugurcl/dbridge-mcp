@@ -260,8 +260,7 @@ export class PostgresDriver implements Driver {
         );
       }
       try {
-        const planBefore = await this.fetchPlan(run, query);
-        const costBefore = extractCost(planBefore) ?? null;
+        const costBefore = extractCost(await this.fetchPlan(run, query)) ?? null;
 
         const { rows: created } = await run("SELECT indexname FROM hypopg_create_index($1)", [
           definition,
@@ -281,16 +280,7 @@ export class PostgresDriver implements Driver {
             (improvementPct !== null ? ` (${improvementPct}% cheaper).` : ".")
           : "The planner ignores this index for the given query; creating it would not help.";
 
-        return {
-          index: definition,
-          used,
-          costBefore,
-          costAfter,
-          improvementPct,
-          verdict,
-          planBefore,
-          planAfter,
-        };
+        return { index: definition, used, costBefore, costAfter, verdict, plan: planAfter };
       } finally {
         await run("SELECT hypopg_reset()").catch(() => undefined);
       }
@@ -335,8 +325,7 @@ export class PostgresDriver implements Driver {
     if (this.options.maxCost <= 0) {
       return;
     }
-    const { rows } = await run(`EXPLAIN (FORMAT JSON) ${statement}`);
-    const cost = extractCost((rows[0] as { "QUERY PLAN"?: unknown })["QUERY PLAN"]);
+    const cost = extractCost(await this.fetchPlan(run, statement));
     if (cost !== undefined && cost > this.options.maxCost) {
       throw new Error(
         `Query rejected: estimated cost ${Math.round(cost)} exceeds the limit of ${this.options.maxCost}. Narrow the query (add filters or a smaller range).`,

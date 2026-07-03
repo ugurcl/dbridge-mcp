@@ -39,15 +39,19 @@ const FORBIDDEN =
 const METADATA =
   /\b(information_schema|sqlite_master|sqlite_schema|sqlite_temp_master|pg_catalog|pg_class|pg_tables|pg_namespace|pg_attribute|pg_database|pg_authid|pg_shadow|pg_user|pg_roles|pg_stat_activity)\b/i;
 
-export function sanitizeQuery(sql: string, config: SafetyConfig): SanitizedQuery {
+function toSingleStatement(sql: string, kind: string): string {
   const clean = sql.trim().replace(/;+\s*$/, "");
-
   if (clean.length === 0) {
-    throw new Error("Empty query.");
+    throw new Error(`Empty ${kind}.`);
   }
   if (clean.includes(";")) {
-    throw new Error("Only a single statement is allowed.");
+    throw new Error(`Only a single ${kind} is allowed.`);
   }
+  return clean;
+}
+
+export function sanitizeQuery(sql: string, config: SafetyConfig): SanitizedQuery {
+  const clean = toSingleStatement(sql, "statement");
   if (!/^(select|with)\b/i.test(clean)) {
     throw new Error("Only SELECT queries are allowed; this bridge is read-only.");
   }
@@ -88,7 +92,7 @@ function applyRowCap(clean: string, maxRows: number): SanitizedQuery {
 }
 
 const INDEX_DDL =
-  /^create\s+(?:unique\s+)?index\s+(?:concurrently\s+)?(?:if\s+not\s+exists\s+)?(?:[\w"]+\s+)?on\s+([\w".]+)\s*(?:using\s+\w+\s*)?\((.+)\)[\s\w()]*$/i;
+  /^create\s+(?:unique\s+)?index\s+(?:concurrently\s+)?(?:if\s+not\s+exists\s+)?(?:[\w"]+\s+)?on\s+([\w".]+)\s*(?:using\s+\w+\s*)?\((.+)\)\s*$/i;
 
 export interface SanitizedIndexDefinition {
   sql: string;
@@ -99,10 +103,7 @@ export function sanitizeIndexDefinition(
   sql: string,
   config: SafetyConfig,
 ): SanitizedIndexDefinition {
-  const clean = sql.trim().replace(/;+\s*$/, "");
-  if (clean.includes(";")) {
-    throw new Error("Only a single CREATE INDEX statement is allowed.");
-  }
+  const clean = toSingleStatement(sql, "CREATE INDEX statement");
   const match = clean.match(INDEX_DDL);
   if (!match) {
     throw new Error(
