@@ -19,6 +19,13 @@ All notable changes to this project are documented here. The format follows
   whether the planner would use it, with before/after cost estimates. The
   index definition passes the same guard as queries (blocked tables and
   hidden columns are rejected).
+- `slow_queries` tool: the most expensive recorded statements with call
+  counts and timings (PostgreSQL `pg_stat_statements`, MySQL
+  `performance_schema` digests). Statements touching restricted tables or
+  columns are omitted from the report.
+- `optimize` prompt: a guided, evidence-based optimization workflow that
+  chains `slow_queries` → `explain_query` / `index_health` → `column_stats`
+  → `test_index`.
 
 ## [0.7.1]
 

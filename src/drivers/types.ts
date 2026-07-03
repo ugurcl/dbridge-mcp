@@ -55,6 +55,19 @@ export interface IndexHealthReport {
   notes: string[];
 }
 
+export interface SlowQuery {
+  query: string;
+  calls: number;
+  totalMs: number;
+  meanMs: number;
+  rows: number | null;
+}
+
+export interface SlowQueryReport {
+  queries: SlowQuery[];
+  notes: string[];
+}
+
 export interface IndexTestResult {
   index: string;
   used: boolean;
@@ -73,5 +86,6 @@ export interface Driver {
   columnStats?(table: string): Promise<TableStats>;
   indexHealth?(table?: string): Promise<IndexHealthReport>;
   testIndex?(indexSql: string, querySql: string): Promise<IndexTestResult>;
+  slowQueries?(limit?: number): Promise<SlowQueryReport>;
   close(): Promise<void>;
 }

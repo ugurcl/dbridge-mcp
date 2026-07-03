@@ -181,6 +181,14 @@ export function visiblePrimaryKey(columns: string[], config: SafetyConfig): stri
   return columns.filter((column) => !hidden.has(column.toLowerCase()));
 }
 
+export function mentionsRestricted(text: string, config: SafetyConfig): boolean {
+  return (
+    METADATA.test(text) ||
+    config.hiddenColumns.some((column) => containsWord(text, column)) ||
+    config.blockedTables.some((table) => containsWord(text, unqualify(table)))
+  );
+}
+
 export function isColumnHidden(column: string, config: SafetyConfig): boolean {
   return toLowerSet(config.hiddenColumns).has(column.toLowerCase());
 }

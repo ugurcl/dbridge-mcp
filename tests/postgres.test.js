@@ -199,3 +199,7 @@ test("test_index validates the index definition first", async () => {
     /restricted/,
   );
 });
+
+test("slow_queries explains that pg_stat_statements is missing", async () => {
+  await assert.rejects(() => driver.slowQueries(5), /pg_stat_statements/);
+});

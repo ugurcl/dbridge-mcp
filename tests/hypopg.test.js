@@ -61,3 +61,15 @@ test("test_index leaves no hypothetical index behind", { skip }, async () => {
   const after = await driver.runQuery("SELECT 1 AS ok");
   assert.equal(after.rows[0].ok, 1);
 });
+
+test("slow_queries returns recorded statements without restricted ones", { skip }, async () => {
+  await driver.runQuery("SELECT count(*) FROM sales");
+  const report = await driver.slowQueries(10);
+  assert.ok(Array.isArray(report.queries));
+  assert.ok(report.queries.length > 0);
+  const first = report.queries[0];
+  assert.equal(typeof first.query, "string");
+  assert.equal(typeof first.calls, "number");
+  assert.equal(typeof first.totalMs, "number");
+  assert.ok(report.queries.every((q) => !/pg_catalog|information_schema/i.test(q.query)));
+});

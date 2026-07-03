@@ -5,6 +5,7 @@ import type {
   IndexHealthReport,
   IndexTestResult,
   QueryResult,
+  SlowQueryReport,
   TableSchema,
   TableStats,
 } from "./types.js";
@@ -15,6 +16,7 @@ import {
   isColumnHidden,
   isTableAllowed,
   maskRows,
+  mentionsRestricted,
   redactRows,
   sanitizeIndexDefinition,
   sanitizeQuery,
@@ -285,6 +287,42 @@ export class PostgresDriver implements Driver {
         await run("SELECT hypopg_reset()").catch(() => undefined);
       }
     });
+  }
+
+  async slowQueries(limit = 10): Promise<SlowQueryReport> {
+    const capped = Math.min(Math.max(Math.floor(limit), 1), 50);
+    const { rows: extension } = await this.client.query(
+      "SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements'",
+    );
+    if (extension.length === 0) {
+      throw new Error(
+        "slow_queries needs the pg_stat_statements extension. Ask the DBA to add it to shared_preload_libraries and run: CREATE EXTENSION pg_stat_statements;",
+      );
+    }
+    const { rows } = await this.client.query(
+      `SELECT query, calls, total_exec_time, mean_exec_time, rows AS row_count
+       FROM pg_stat_statements
+       WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+       ORDER BY total_exec_time DESC
+       LIMIT $1`,
+      [capped * 3],
+    );
+    const queries = rows
+      .filter((row) => !mentionsRestricted(String(row.query), this.safety))
+      .slice(0, capped)
+      .map((row) => ({
+        query: String(row.query),
+        calls: Number(row.calls),
+        totalMs: round4(Number(row.total_exec_time)),
+        meanMs: round4(Number(row.mean_exec_time)),
+        rows: row.row_count === null ? null : Number(row.row_count),
+      }));
+    return {
+      queries,
+      notes: [
+        "Times come from pg_stat_statements; literals are normalized to placeholders. Statements touching restricted tables or columns are omitted.",
+      ],
+    };
   }
 
   private async fetchPlan(run: Runner, query: string): Promise<unknown> {

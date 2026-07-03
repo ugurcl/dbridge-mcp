@@ -183,6 +183,32 @@ export function createServer(driver: Driver, deps: ServerDeps = {}): McpServer {
   );
 
   server.registerTool(
+    "slow_queries",
+    {
+      title: "Slowest queries",
+      description:
+        "Returns the most expensive statements recorded by the database (PostgreSQL pg_stat_statements, MySQL performance_schema), with call counts and total/mean times. Use it to decide what is worth optimizing.",
+      inputSchema: {
+        limit: z
+          .number()
+          .int()
+          .positive()
+          .max(50)
+          .optional()
+          .describe("How many statements to return, default 10"),
+      },
+    },
+    async ({ limit }) =>
+      textResult(
+        await run("slow_queries", { limit }, () => {
+          const slow = requireCapability(driver.slowQueries, "slow_queries").bind(driver);
+          limiter.take();
+          return slow(limit);
+        }),
+      ),
+  );
+
+  server.registerTool(
     "get_limits",
     {
       title: "Get active limits",
@@ -191,6 +217,38 @@ export function createServer(driver: Driver, deps: ServerDeps = {}): McpServer {
       inputSchema: {},
     },
     async () => textResult(await run("get_limits", {}, async () => limits)),
+  );
+
+  server.registerPrompt(
+    "optimize",
+    {
+      title: "Optimize the database",
+      description: "A guided, evidence-based optimization pass over the connected database.",
+      argsSchema: {
+        focus: z
+          .string()
+          .optional()
+          .describe("Optional focus: a table name or a SQL query to optimize"),
+      },
+    },
+    ({ focus }) => ({
+      messages: [
+        {
+          role: "user" as const,
+          content: {
+            type: "text" as const,
+            text: [
+              "Optimize this database using evidence, not guesses. Follow these steps:",
+              "1. If slow_queries is available, call it to find the most expensive statements" +
+                (focus ? ` (focus on: ${focus})` : "") + ".",
+              "2. For each candidate query, call explain_query to inspect the plan and index_health on the involved tables to spot unused or duplicate indexes.",
+              "3. Before recommending any new index, call column_stats to check the column is selective enough, then validate the idea with test_index — only recommend indexes the planner would actually use.",
+              "4. Report: what is slow, why, and the specific validated changes you recommend (with before/after cost estimates). Never claim an index helps without test_index evidence.",
+            ].join("\n"),
+          },
+        },
+      ],
+    }),
   );
 
   server.registerResource(

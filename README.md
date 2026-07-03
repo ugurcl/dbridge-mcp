@@ -53,6 +53,7 @@ If all you need is "run SQL from my agent", plenty of servers do that. dbridge i
 | `column_stats` | Per-column distinct-value counts and null fractions — is this column selective enough to index? |
 | `index_health` | List indexes with sizes and scan counts, flagging unused, duplicate, and invalid ones. |
 | `test_index` | Simulate a `CREATE INDEX` without building it and report whether the planner would use it (PostgreSQL, via [hypopg](https://github.com/HypoPG/hypopg)). |
+| `slow_queries` | The most expensive recorded statements with call counts and timings (PostgreSQL `pg_stat_statements`, MySQL `performance_schema`). |
 | `get_limits` | Report the safety limits in effect (caps, timeouts, hidden/masked columns). |
 
 ## Resources
@@ -60,6 +61,12 @@ If all you need is "run SQL from my agent", plenty of servers do that. dbridge i
 | Resource | Purpose |
 | --- | --- |
 | `dbridge://schema` | The full schema (every table and its columns) as one JSON document. |
+
+## Prompts
+
+| Prompt | Purpose |
+| --- | --- |
+| `optimize` | A guided optimization pass: find slow queries, inspect plans and index health, and validate every index recommendation with `test_index` before suggesting it. |
 
 ## Requirements
 

@@ -4,6 +4,7 @@ import type {
   IndexHealth,
   IndexHealthReport,
   QueryResult,
+  SlowQueryReport,
   TableSchema,
   TableStats,
 } from "./types.js";
@@ -14,6 +15,7 @@ import {
   isColumnHidden,
   isTableAllowed,
   maskRows,
+  mentionsRestricted,
   redactRows,
   sanitizeQuery,
   truncateCells,
@@ -220,6 +222,43 @@ export class MySqlDriver implements Driver {
     ];
     await this.applyUnusedIndexInfo(visible, notes);
     return { indexes: visible, notes };
+  }
+
+  async slowQueries(limit = 10): Promise<SlowQueryReport> {
+    const capped = Math.min(Math.max(Math.floor(limit), 1), 50);
+    let rows: Record<string, unknown>[];
+    try {
+      ({ rows } = await this.client.query(
+        `SELECT DIGEST_TEXT AS query, COUNT_STAR AS calls,
+                SUM_TIMER_WAIT / 1e9 AS total_ms, AVG_TIMER_WAIT / 1e9 AS mean_ms,
+                SUM_ROWS_SENT AS row_count
+         FROM performance_schema.events_statements_summary_by_digest
+         WHERE SCHEMA_NAME = DATABASE() AND DIGEST_TEXT IS NOT NULL
+         ORDER BY SUM_TIMER_WAIT DESC
+         LIMIT ?`,
+        [capped * 3],
+      ));
+    } catch {
+      throw new Error(
+        "slow_queries needs the performance_schema statement digests, which are not accessible on this server.",
+      );
+    }
+    const queries = rows
+      .filter((row) => !mentionsRestricted(String(row.query ?? ""), this.safety))
+      .slice(0, capped)
+      .map((row) => ({
+        query: String(row.query),
+        calls: Number(row.calls),
+        totalMs: Math.round(Number(row.total_ms) * 10000) / 10000,
+        meanMs: Math.round(Number(row.mean_ms) * 10000) / 10000,
+        rows: row.row_count === null ? null : Number(row.row_count),
+      }));
+    return {
+      queries,
+      notes: [
+        "Times come from performance_schema statement digests; literals are normalized. Statements touching restricted tables or columns are omitted. Counters reset when the server restarts.",
+      ],
+    };
   }
 
   private async applyUnusedIndexInfo(indexes: IndexHealth[], notes: string[]): Promise<void> {

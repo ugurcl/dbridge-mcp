@@ -120,3 +120,11 @@ test("index_health flags duplicate indexes", { skip }, async () => {
   const primary = report.indexes.find((i) => i.index === "PRIMARY");
   assert.equal(primary.primary, true);
 });
+
+test("slow_queries returns digest statements without restricted ones", { skip }, async () => {
+  await driver.runQuery("SELECT count(*) FROM t_dept");
+  const report = await driver.slowQueries(10);
+  assert.ok(Array.isArray(report.queries));
+  assert.ok(report.queries.length > 0);
+  assert.ok(report.queries.every((q) => !/maas|t_secrets/i.test(q.query)));
+});
