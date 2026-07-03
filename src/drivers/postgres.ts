@@ -27,7 +27,7 @@ import {
   visiblePrimaryKey,
   type SafetyConfig,
 } from "../guard.js";
-import { markDuplicates, round4 } from "./perf.js";
+import { capLimit, markDuplicates, round4 } from "./perf.js";
 
 type Rows = { rows: Record<string, unknown>[] };
 type Runner = (text: string, params?: unknown[]) => Promise<Rows>;
@@ -290,23 +290,22 @@ export class PostgresDriver implements Driver {
   }
 
   async slowQueries(limit = 10): Promise<SlowQueryReport> {
-    const capped = Math.min(Math.max(Math.floor(limit), 1), 50);
-    const { rows: extension } = await this.client.query(
-      "SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements'",
-    );
-    if (extension.length === 0) {
+    const capped = capLimit(limit, 50);
+    let rows: Record<string, unknown>[];
+    try {
+      ({ rows } = await this.client.query(
+        `SELECT query, calls, total_exec_time, mean_exec_time, rows AS row_count
+         FROM pg_stat_statements
+         WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+         ORDER BY total_exec_time DESC
+         LIMIT $1`,
+        [capped * 3],
+      ));
+    } catch {
       throw new Error(
         "slow_queries needs the pg_stat_statements extension. Ask the DBA to add it to shared_preload_libraries and run: CREATE EXTENSION pg_stat_statements;",
       );
     }
-    const { rows } = await this.client.query(
-      `SELECT query, calls, total_exec_time, mean_exec_time, rows AS row_count
-       FROM pg_stat_statements
-       WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
-       ORDER BY total_exec_time DESC
-       LIMIT $1`,
-      [capped * 3],
-    );
     const queries = rows
       .filter((row) => !mentionsRestricted(String(row.query), this.safety))
       .slice(0, capped)

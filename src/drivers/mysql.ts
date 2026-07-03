@@ -25,7 +25,7 @@ import {
   visiblePrimaryKey,
   type SafetyConfig,
 } from "../guard.js";
-import { markDuplicates } from "./perf.js";
+import { capLimit, markDuplicates, round4 } from "./perf.js";
 
 type Rows = { rows: Record<string, unknown>[] };
 type Runner = (text: string, params?: unknown[]) => Promise<Rows>;
@@ -225,7 +225,7 @@ export class MySqlDriver implements Driver {
   }
 
   async slowQueries(limit = 10): Promise<SlowQueryReport> {
-    const capped = Math.min(Math.max(Math.floor(limit), 1), 50);
+    const capped = capLimit(limit, 50);
     let rows: Record<string, unknown>[];
     try {
       ({ rows } = await this.client.query(
@@ -249,8 +249,8 @@ export class MySqlDriver implements Driver {
       .map((row) => ({
         query: String(row.query),
         calls: Number(row.calls),
-        totalMs: Math.round(Number(row.total_ms) * 10000) / 10000,
-        meanMs: Math.round(Number(row.mean_ms) * 10000) / 10000,
+        totalMs: round4(Number(row.total_ms)),
+        meanMs: round4(Number(row.mean_ms)),
         rows: row.row_count === null ? null : Number(row.row_count),
       }));
     return {

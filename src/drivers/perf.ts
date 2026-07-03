@@ -19,3 +19,7 @@ export function markDuplicates(indexes: IndexHealth[]): void {
 export function round4(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
+
+export function capLimit(limit: number, max: number): number {
+  return Math.min(Math.max(Math.floor(limit), 1), max);
+}
